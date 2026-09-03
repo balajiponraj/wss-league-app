@@ -1,257 +1,736 @@
-const featureCards = [
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { hasSupabaseConfig, supabase } from "@/lib/supabase";
+
+type Player = {
+  id: string;
+  name: string;
+  skill: string;
+  club: string;
+};
+
+type MatchRecord = {
+  id: string;
+  playerAId: string;
+  playerBId: string;
+  playerAScore: number;
+  playerBScore: number;
+  winnerId: string;
+  note: string;
+  createdAt: string;
+};
+
+type TabName = "dashboard" | "players" | "matches";
+
+const STORAGE_KEY = "wss-badminton-db-v1";
+
+const defaultPlayers: Player[] = [
+  { id: "p1", name: "Nattu", skill: "Advanced", club: "WSS" },
+  { id: "p2", name: "Aarav", skill: "Advanced", club: "WSS" },
+  { id: "p3", name: "Jeevan", skill: "Intermediate", club: "WSS" },
+  { id: "p4", name: "Rafi", skill: "Intermediate", club: "WSS" },
+];
+
+const defaultMatches: MatchRecord[] = [
   {
-    title: "Specify match settings",
-    subtitle: "New Match",
-    accent: "from-violet-500 to-purple-600",
-    tone: "purple",
-    rows: [
-      { label: "Settings", value: "Max games (sets)" },
-      { label: "Configuration", value: "Singles" },
-      { label: "Use deuce", value: "On" },
-    ],
+    id: "m1",
+    playerAId: "p1",
+    playerBId: "p2",
+    playerAScore: 21,
+    playerBScore: 18,
+    winnerId: "p1",
+    note: "League match",
+    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 12).toISOString(),
   },
   {
-    title: "Keep track of player statistics",
-    subtitle: "Player Statistics",
-    accent: "from-indigo-500 to-sky-500",
-    tone: "indigo",
-    rows: [
-      { label: "Jake Lee", value: "2" },
-      { label: "Service faults", value: "3" },
-      { label: "Unforced errors", value: "6" },
-    ],
-  },
-  {
-    title: "Keep track of shuttlecocks, challenges, misconduct cards, and more!",
-    subtitle: "Seven-Twelve",
-    accent: "from-slate-500 to-slate-700",
-    tone: "neutral",
-    rows: [
-      { label: "Add shuttlecock...", value: "" },
-      { label: "Player statistics...", value: "" },
-      { label: "Give misconduct card...", value: "" },
-    ],
-  },
-  {
-    title: "Share match scores with other people",
-    subtitle: "Share score",
-    accent: "from-zinc-500 to-zinc-700",
-    tone: "dark",
-    rows: [
-      { label: "Jake Lee", value: "21" },
-      { label: "Xian Huang", value: "19" },
-      { label: "Score text", value: "" },
-    ],
+    id: "m2",
+    playerAId: "p3",
+    playerBId: "p4",
+    playerAScore: 19,
+    playerBScore: 21,
+    winnerId: "p4",
+    note: "Practice drive",
+    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(),
   },
 ];
 
-export default function Home() {
-  return (
-    <div className="min-h-screen bg-[#f3f1ef] px-4 py-8 text-[#1d1d1f] sm:px-8 lg:px-12">
-      <div className="mx-auto max-w-[1500px]">
-        <header className="mb-10 flex items-center justify-between rounded-full border border-[#d9d4d0] bg-[#f5f5f3]/80 px-5 py-3 shadow-[0_8px_26px_rgba(0,0,0,0.04)] backdrop-blur-sm">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#1c1d1f] text-lg font-bold text-white">
-              W
-            </div>
-            <div>
-              <p className="text-[10px] font-medium uppercase tracking-[0.28em] text-[#5d5d62]">WHITBY SMASH SQUAD</p>
-              <h1 className="text-lg font-semibold text-[#1b1b1d]">WSS League Desk</h1>
-            </div>
-          </div>
+const createId = () => {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
 
-          <div className="hidden items-center gap-2 md:flex">
-            {['Dashboard', 'Players', 'Matches', 'Standings', 'Settings'].map((item) => (
-              <button
-                key={item}
-                className={`rounded-full px-3 py-1.5 text-sm transition ${
-                  item === 'Dashboard'
-                    ? 'bg-[#1d1e22] text-white shadow-md'
-                    : 'bg-white text-[#36363a] hover:bg-[#eceae8]'
-                }`}
-              >
-                {item}
-              </button>
-            ))}
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+};
+
+export default function Home() {
+  const [players, setPlayers] = useState<Player[]>([]);
+  const [matches, setMatches] = useState<MatchRecord[]>([]);
+  const [tab, setTab] = useState<TabName>("dashboard");
+  const [newPlayer, setNewPlayer] = useState({ name: "", skill: "Intermediate", club: "WSS" });
+  const [liveScore, setLiveScore] = useState({ playerA: 0, playerB: 0 });
+  const [matchDraft, setMatchDraft] = useState({
+    playerAId: defaultPlayers[0].id,
+    playerBId: defaultPlayers[1].id,
+    note: "Club league",
+  });
+  const [notice, setNotice] = useState("Local storage mode enabled. Connect Supabase for live database storage.");
+
+  useEffect(() => {
+    const loadLocalData = () => {
+      const raw = localStorage.getItem(STORAGE_KEY);
+
+      if (!raw) {
+        setPlayers(defaultPlayers);
+        setMatches(defaultMatches);
+        return;
+      }
+
+      try {
+        const parsed = JSON.parse(raw) as { players?: Player[]; matches?: MatchRecord[] };
+        setPlayers(parsed.players && parsed.players.length ? parsed.players : defaultPlayers);
+        setMatches(parsed.matches && parsed.matches.length ? parsed.matches : defaultMatches);
+      } catch {
+        setPlayers(defaultPlayers);
+        setMatches(defaultMatches);
+      }
+    };
+
+    if (!hasSupabaseConfig || !supabase) {
+      loadLocalData();
+      return;
+    }
+
+    const client = supabase;
+
+    const loadSupabaseData = async () => {
+      const { data: playersData, error: playersError } = await client.from("players").select("*");
+      const { data: matchesData, error: matchesError } = await client.from("matches").select("*");
+
+      if (playersError || matchesError) {
+        setNotice("Supabase connection is set, but tables are not ready yet.");
+        loadLocalData();
+        return;
+      }
+
+      const nextPlayers = (playersData ?? []) as Player[];
+      const nextMatches = (matchesData ?? []) as MatchRecord[];
+      setPlayers(nextPlayers);
+      setMatches(nextMatches);
+      setMatchDraft((current) => ({
+        ...current,
+        playerAId: nextPlayers.some((player) => player.id === current.playerAId)
+          ? current.playerAId
+          : nextPlayers[0]?.id ?? "",
+        playerBId: nextPlayers.some((player) => player.id === current.playerBId)
+          ? current.playerBId
+          : nextPlayers[1]?.id ?? "",
+      }));
+      setNotice("Connected to Supabase. Live sync is active.");
+    };
+
+    loadSupabaseData();
+
+    const channel = client
+      .channel("wss-league-live-sync")
+      .on("postgres_changes", { event: "*", schema: "public", table: "players" }, loadSupabaseData)
+      .on("postgres_changes", { event: "*", schema: "public", table: "matches" }, loadSupabaseData)
+      .subscribe((status) => {
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          setNotice("Database connected, but live sync is unavailable. Refresh to update.");
+        }
+      });
+
+    return () => {
+      void client.removeChannel(channel);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!hasSupabaseConfig || !supabase) {
+      if (!players.length && !matches.length) return;
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({
+          players,
+          matches,
+        }),
+      );
+    }
+  }, [players, matches]);
+
+  const leaderboard = useMemo(() => {
+    const stats = players.map((player) => {
+      const playerMatches = matches.filter(
+        (match) => match.playerAId === player.id || match.playerBId === player.id,
+      );
+
+      const wins = matches.filter((match) => match.winnerId === player.id).length;
+      const losses = Math.max(playerMatches.length - wins, 0);
+
+      return {
+        ...player,
+        matches: playerMatches.length,
+        wins,
+        losses,
+      };
+    });
+
+    return stats.sort((a, b) => b.wins - a.wins || b.matches - a.matches);
+  }, [players, matches]);
+
+  const recentMatches = useMemo(
+    () =>
+      [...matches]
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+        .slice(0, 4),
+    [matches],
+  );
+
+  const playerMap = useMemo(
+    () => Object.fromEntries(players.map((player) => [player.id, player])),
+    [players],
+  );
+
+  const addPlayer = async (event: React.FormEvent) => {
+    event.preventDefault();
+
+    const trimmedName = newPlayer.name.trim();
+    if (!trimmedName) {
+      setNotice("Please enter a player name.");
+      return;
+    }
+
+    const createdPlayer: Player = {
+      id: createId(),
+      name: trimmedName,
+      skill: newPlayer.skill,
+      club: newPlayer.club.trim() || "WSS",
+    };
+
+    if (hasSupabaseConfig && supabase) {
+      const { error } = await supabase.from("players").insert([createdPlayer]);
+
+      if (error) {
+        setNotice(`Supabase insert failed: ${error.message}`);
+        return;
+      }
+
+      setNotice(`${trimmedName} was added to Supabase.`);
+      const { data } = await supabase.from("players").select("*");
+      setPlayers(data ?? [createdPlayer]);
+    } else {
+      setPlayers((current) => [...current, createdPlayer]);
+      setNotice(`${trimmedName} was added to the player database.`);
+    }
+
+    setNewPlayer({ name: "", skill: "Intermediate", club: "WSS" });
+  };
+
+  const saveMatch = async () => {
+    if (!matchDraft.playerAId || !matchDraft.playerBId || matchDraft.playerAId === matchDraft.playerBId) {
+      setNotice("Choose two different players to save a match.");
+      return;
+    }
+
+    if (liveScore.playerA === 0 && liveScore.playerB === 0) {
+      setNotice("Score cannot be 0-0. Enter a result before saving.");
+      return;
+    }
+
+    const winnerId = liveScore.playerA > liveScore.playerB ? matchDraft.playerAId : matchDraft.playerBId;
+
+    const record: MatchRecord = {
+      id: createId(),
+      playerAId: matchDraft.playerAId,
+      playerBId: matchDraft.playerBId,
+      playerAScore: liveScore.playerA,
+      playerBScore: liveScore.playerB,
+      winnerId,
+      note: matchDraft.note.trim() || "Match recorded",
+      createdAt: new Date().toISOString(),
+    };
+
+    if (hasSupabaseConfig && supabase) {
+      const { error } = await supabase.from("matches").insert([record]);
+
+      if (error) {
+        setNotice(`Supabase match save failed: ${error.message}`);
+        return;
+      }
+
+      const { data } = await supabase.from("matches").select("*");
+      setMatches(data ?? [record]);
+      setNotice("Match result saved to Supabase.");
+    } else {
+      setMatches((current) => [record, ...current]);
+      setNotice("Match result saved to local database.");
+    }
+
+    setLiveScore({ playerA: 0, playerB: 0 });
+    setMatchDraft((current) => ({ ...current, note: "Club league" }));
+  };
+
+  return (
+    <div className="min-h-screen bg-[#f3f1ef] px-4 py-6 text-[#1d1d1f] sm:px-6 lg:px-10">
+      <div className="mx-auto max-w-7xl">
+        <header className="mb-6 rounded-[28px] border border-[#dad3cf] bg-[#f9f7f5]/90 px-5 py-4 shadow-[0_18px_40px_rgba(17,24,39,0.07)] backdrop-blur-sm">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex items-center gap-3">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#1a1d20] text-lg font-bold text-white">
+                W
+              </div>
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.26em] text-[#61656d]">
+                  WHITBY SMASH SQUAD
+                </p>
+                <h1 className="text-xl font-semibold text-[#111215]">WSS Badminton League</h1>
+              </div>
+            </div>
+
+            <nav className="flex flex-wrap items-center gap-2">
+              {[
+                { key: "dashboard", label: "Dashboard" },
+                { key: "players", label: "Players" },
+                { key: "matches", label: "Matches" },
+              ].map((item) => (
+                <button
+                  key={item.key}
+                  type="button"
+                  onClick={() => setTab(item.key as TabName)}
+                  className={`rounded-full px-4 py-2 text-sm font-medium transition ${
+                    tab === item.key
+                      ? "bg-[#17191d] text-white shadow-md"
+                      : "bg-white text-[#3b3d42] hover:bg-[#efefee]"
+                  }`}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </nav>
           </div>
         </header>
 
-        <main className="flex min-h-[760px] items-center justify-center overflow-hidden rounded-[34px] border border-[#dad5d1] bg-[radial-gradient(circle_at_top,#f7f4f2_0%,#ece8e5_35%,#e7e3e0_100%)] px-2 py-4 shadow-[0_24px_70px_rgba(0,0,0,0.08)] sm:px-6 lg:px-8">
-          <div className="flex w-full max-w-[1480px] items-center justify-center gap-4 lg:gap-6">
-            {[0, 1, 2, 3].map((cardIndex) => (
-              <div
-                key={cardIndex}
-                className="relative h-[720px] w-[290px] rounded-[36px] border border-[#2d2f34] bg-[linear-gradient(180deg,#2c2e32_0%,#1d1f23_40%,#181a1e_100%)] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_16px_22px_rgba(0,0,0,0.18)]"
-              >
-                <div className="relative h-full rounded-[30px] bg-[linear-gradient(180deg,rgba(255,255,255,0.07),rgba(255,255,255,0.02))] p-3">
-                  <div className="mb-3 flex items-center justify-between px-2 pt-1 text-white">
-                    <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.28em] text-[#b0b4bb]">
-                      <span>{cardIndex === 0 ? '9:20' : cardIndex === 1 ? '5:40' : cardIndex === 2 ? '5:40' : '9:18'}</span>
+        <main className="space-y-6">
+          <div className="rounded-[24px] border border-[#ddd5d1] bg-white/60 p-3 shadow-[0_10px_25px_rgba(17,24,39,0.04)]">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-xs uppercase tracking-[0.2em] text-[#6b7078]">System status</p>
+                <p className="text-sm font-medium text-[#202328]">{notice}</p>
+              </div>
+              <div className={`rounded-full border px-3 py-1 text-xs font-medium uppercase tracking-[0.2em] ${
+                hasSupabaseConfig
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                  : "border-amber-200 bg-amber-50 text-amber-700"
+              }`}>
+                {hasSupabaseConfig ? "LIVE SYNC" : "LOCAL MODE"}
+              </div>
+            </div>
+          </div>
+
+          {tab === "dashboard" && (
+            <>
+              <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <div className="rounded-[22px] border border-[#dcd6d2] bg-[#191c20] p-5 text-white shadow-[0_18px_28px_rgba(17,24,39,0.12)]">
+                  <p className="text-[10px] uppercase tracking-[0.24em] text-slate-400">Players</p>
+                  <div className="mt-4 flex items-end justify-between">
+                    <span className="text-3xl font-bold">{players.length}</span>
+                    <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
+                  </div>
+                </div>
+
+                <div className="rounded-[22px] border border-[#dcd6d2] bg-[#f8f7f5] p-5 shadow-[0_10px_20px_rgba(0,0,0,0.04)]">
+                  <p className="text-[10px] uppercase tracking-[0.24em] text-[#676d75]">Matches</p>
+                  <div className="mt-4 flex items-end justify-between">
+                    <span className="text-3xl font-bold text-[#17191d]">{matches.length}</span>
+                    <span className="h-2.5 w-2.5 rounded-full bg-violet-500" />
+                  </div>
+                </div>
+
+                <div className="rounded-[22px] border border-[#dcd6d2] bg-[#f8f7f5] p-5 shadow-[0_10px_20px_rgba(0,0,0,0.04)]">
+                  <p className="text-[10px] uppercase tracking-[0.24em] text-[#676d75]">Wins</p>
+                  <div className="mt-4 flex items-end justify-between">
+                    <span className="text-3xl font-bold text-[#17191d]">
+                      {matches.filter((match) => match.winnerId === match.playerAId).length}
+                    </span>
+                    <span className="h-2.5 w-2.5 rounded-full bg-sky-500" />
+                  </div>
+                </div>
+
+                <div className="rounded-[22px] border border-[#dcd6d2] bg-[#f8f7f5] p-5 shadow-[0_10px_20px_rgba(0,0,0,0.04)]">
+                  <p className="text-[10px] uppercase tracking-[0.24em] text-[#676d75]">Leader</p>
+                  <div className="mt-4 flex items-end justify-between">
+                    <span className="text-2xl font-bold text-[#17191d]">
+                      {leaderboard[0]?.name ?? "-"}
+                    </span>
+                    <span className="h-2.5 w-2.5 rounded-full bg-amber-500" />
+                  </div>
+                </div>
+              </section>
+
+              <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+                <div className="rounded-[26px] border border-[#d9d3d0] bg-[#1b1d20] p-5 text-white shadow-[0_16px_30px_rgba(17,24,39,0.12)]">
+                  <div className="mb-4 flex items-center justify-between">
+                    <div>
+                      <p className="text-[10px] uppercase tracking-[0.25em] text-slate-400">Live scoring</p>
+                      <h2 className="mt-1 text-2xl font-semibold">Singles match</h2>
                     </div>
-                    <div className="flex gap-1.5">
-                      <span className="h-1.5 w-1.5 rounded-full bg-white/70" />
-                      <span className="h-1.5 w-1.5 rounded-full bg-white/50" />
-                      <span className="h-1.5 w-1.5 rounded-full bg-white/30" />
+                    <button
+                      type="button"
+                      onClick={() => setLiveScore({ playerA: 0, playerB: 0 })}
+                      className="rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-xs uppercase tracking-[0.18em] text-slate-200"
+                    >
+                      Reset
+                    </button>
+                  </div>
+
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div className="rounded-[20px] border border-white/10 bg-white/5 p-4">
+                      <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-slate-400">
+                        Player A
+                      </label>
+                      <select
+                        className="w-full rounded-xl border border-white/10 bg-[#121417] px-3 py-2 text-sm text-white outline-none"
+                        value={matchDraft.playerAId}
+                        onChange={(event) =>
+                          setMatchDraft((current) => ({ ...current, playerAId: event.target.value }))
+                        }
+                      >
+                        {players.map((player) => (
+                          <option key={player.id} value={player.id}>
+                            {player.name}
+                          </option>
+                        ))}
+                      </select>
+
+                      <div className="mt-5 flex items-center justify-between">
+                        <span className="text-5xl font-bold">{liveScore.playerA}</span>
+                        <button
+                          type="button"
+                          onClick={() => setLiveScore((current) => ({ ...current, playerA: current.playerA + 1 }))}
+                          className="rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-white"
+                        >
+                          +1
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="rounded-[20px] border border-white/10 bg-white/5 p-4">
+                      <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-slate-400">
+                        Player B
+                      </label>
+                      <select
+                        className="w-full rounded-xl border border-white/10 bg-[#121417] px-3 py-2 text-sm text-white outline-none"
+                        value={matchDraft.playerBId}
+                        onChange={(event) =>
+                          setMatchDraft((current) => ({ ...current, playerBId: event.target.value }))
+                        }
+                      >
+                        {players.map((player) => (
+                          <option key={player.id} value={player.id}>
+                            {player.name}
+                          </option>
+                        ))}
+                      </select>
+
+                      <div className="mt-5 flex items-center justify-between">
+                        <span className="text-5xl font-bold">{liveScore.playerB}</span>
+                        <button
+                          type="button"
+                          onClick={() => setLiveScore((current) => ({ ...current, playerB: current.playerB + 1 }))}
+                          className="rounded-full bg-sky-500 px-4 py-2 text-sm font-semibold text-white"
+                        >
+                          +1
+                        </button>
+                      </div>
                     </div>
                   </div>
 
-                  <div className="mb-3 flex items-center justify-between">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/8 text-lg text-white">
-                      {cardIndex === 3 ? '‹' : '<'}
-                    </div>
-                    {cardIndex === 0 && (
-                      <div className="rounded-full border border-white/10 bg-white/6 px-3 py-1 text-[10px] font-medium uppercase tracking-[0.18em] text-white/80">
-                        Match
-                      </div>
-                    )}
-                    {cardIndex === 1 && (
-                      <div className="rounded-full border border-white/10 bg-white/6 px-3 py-1 text-[10px] font-medium uppercase tracking-[0.18em] text-white/80">
-                        Stats
-                      </div>
-                    )}
-                    {cardIndex === 2 && (
-                      <div className="rounded-full border border-white/10 bg-white/6 px-3 py-1 text-[10px] font-medium uppercase tracking-[0.18em] text-white/80">
-                        Rules
-                      </div>
-                    )}
-                    {cardIndex === 3 && (
-                      <div className="rounded-full border border-white/10 bg-white/6 px-3 py-1 text-[10px] font-medium uppercase tracking-[0.18em] text-white/80">
-                        Score
-                      </div>
-                    )}
+                  <div className="mt-4 rounded-[18px] border border-white/10 bg-[#101316] p-3">
+                    <label className="mb-2 block text-xs uppercase tracking-[0.2em] text-slate-400">
+                      Match note
+                    </label>
+                    <input
+                      type="text"
+                      value={matchDraft.note}
+                      onChange={(event) =>
+                        setMatchDraft((current) => ({ ...current, note: event.target.value }))
+                      }
+                      className="w-full rounded-xl border border-white/10 bg-[#171b1f] px-3 py-2 text-sm text-white outline-none"
+                      placeholder="League / practice / final"
+                    />
                   </div>
 
-                  <div className="mb-4 rounded-[22px] border border-white/8 bg-[linear-gradient(135deg,rgba(255,255,255,0.08),rgba(255,255,255,0.02))] p-3">
-                    <div className="mb-2 flex items-center justify-between text-xs text-white/60">
-                      <span>{featureCards[cardIndex].subtitle}</span>
-                      <span>{cardIndex === 0 ? '↗' : cardIndex === 1 ? '⤴' : cardIndex === 2 ? '✦' : '⇪'}</span>
-                    </div>
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="h-1.5 flex-1 rounded-full bg-white/8">
-                        <div className={`h-full w-2/3 rounded-full bg-gradient-to-r ${featureCards[cardIndex].accent}`} />
-                      </div>
+                  <button
+                    type="button"
+                    onClick={saveMatch}
+                    className="mt-5 w-full rounded-full bg-gradient-to-r from-emerald-500 to-sky-500 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-emerald-500/20"
+                  >
+                    Save match result
+                  </button>
+                </div>
+
+                <div className="rounded-[26px] border border-[#d9d3d0] bg-[#f9f7f5] p-5 shadow-[0_10px_22px_rgba(0,0,0,0.04)]">
+                  <div className="mb-4 flex items-center justify-between">
+                    <div>
+                      <p className="text-[10px] uppercase tracking-[0.25em] text-[#696f77]">Leaderboard</p>
+                      <h2 className="mt-1 text-2xl font-semibold text-[#181a1d]">Player rankings</h2>
                     </div>
                   </div>
 
                   <div className="space-y-3">
-                    <div className="rounded-[18px] border border-white/8 bg-[linear-gradient(180deg,#2a2d31,#1d1f23)] p-3 shadow-inner shadow-black/10">
-                      <h2 className="mb-3 text-[18px] font-medium leading-snug text-white/95">
-                        {featureCards[cardIndex].title}
-                      </h2>
-
-                      {cardIndex === 0 && (
-                        <div className="space-y-3 text-sm text-white/80">
-                          <div className="grid grid-cols-2 gap-2">
-                            <button className="rounded-xl bg-gradient-to-r from-violet-500 to-purple-600 px-2 py-2 text-xs font-medium text-white shadow-md shadow-violet-500/20">
-                              Singles
-                            </button>
-                            <button className="rounded-xl bg-white/8 px-2 py-2 text-xs font-medium text-slate-200">
-                              Doubles
-                            </button>
+                    {leaderboard.map((player, index) => (
+                      <div
+                        key={player.id}
+                        className="flex items-center justify-between rounded-[18px] border border-[#e5e0dd] bg-white p-3"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#17191d] text-sm font-semibold text-white">
+                            #{index + 1}
                           </div>
-                          <div className="rounded-xl bg-[#17181b] p-2 text-xs">
-                            <div className="mb-2 flex items-center justify-between text-slate-300">
-                              <span>Max games (sets)</span>
-                              <span className="text-white">3</span>
-                            </div>
-                            <div className="mb-2 flex items-center justify-between text-slate-300">
-                              <span>Points per game</span>
-                              <span className="text-white">21</span>
-                            </div>
-                            <div className="flex items-center justify-between text-slate-300">
-                              <span>Use deuce</span>
-                              <span className="h-4 w-8 rounded-full bg-violet-500/80 p-0.5">
-                                <span className="ml-4 block h-3 w-3 rounded-full bg-white" />
-                              </span>
-                            </div>
-                          </div>
-                          <button className="mt-2 w-full rounded-xl bg-gradient-to-r from-violet-500 to-indigo-500 px-3 py-2.5 text-sm font-medium text-white">
-                            Next
-                          </button>
-                        </div>
-                      )}
-
-                      {cardIndex === 1 && (
-                        <div className="space-y-3 text-sm text-white/80">
-                          <div className="rounded-lg bg-[#1b1d22] p-2">
-                            <div className="mb-2 flex items-center justify-between text-[11px] text-slate-300">
-                              <span>Jae Lee</span>
-                              <span className="text-white">21</span>
-                            </div>
-                            <div className="mb-2 flex items-center justify-between text-[11px] text-slate-300">
-                              <span>Alex S</span>
-                              <span className="text-white">13</span>
-                            </div>
-                            <div className="space-y-2">
-                              <div className="flex items-center justify-between text-[11px]">
-                                <span>Service faults</span>
-                                <span className="rounded bg-white/6 px-2 py-1">2</span>
-                              </div>
-                              <div className="flex items-center justify-between text-[11px]">
-                                <span>Unforced errors</span>
-                                <span className="rounded bg-white/6 px-2 py-1">3</span>
-                              </div>
-                              <div className="flex items-center justify-between text-[11px]">
-                                <span>Winner</span>
-                                <span className="rounded bg-white/6 px-2 py-1">6</span>
-                              </div>
-                            </div>
-                          </div>
-                          <button className="w-full rounded-xl bg-white/8 px-3 py-2 text-sm text-white">
-                            Save stats
-                          </button>
-                        </div>
-                      )}
-
-                      {cardIndex === 2 && (
-                        <div className="space-y-3 text-sm text-white/80">
-                          <div className="rounded-lg bg-[#1b1d22] p-2">
-                            <div className="mb-2 flex items-center justify-between text-[11px] text-slate-300">
-                              <span>Add shuttlecock...</span>
-                              <span>+</span>
-                            </div>
-                            <div className="mb-2 flex items-center justify-between text-[11px] text-slate-300">
-                              <span>Player statistics...</span>
-                              <span>◌</span>
-                            </div>
-                            <div className="mb-2 flex items-center justify-between text-[11px] text-slate-300">
-                              <span>Challenge</span>
-                              <span>⚑</span>
-                            </div>
-                            <div className="flex items-center justify-between text-[11px] text-slate-300">
-                              <span>Misconduct card...</span>
-                              <span>!</span>
-                            </div>
+                          <div>
+                            <p className="font-semibold text-[#17191d]">{player.name}</p>
+                            <p className="text-xs text-[#666d75]">{player.skill}</p>
                           </div>
                         </div>
-                      )}
-
-                      {cardIndex === 3 && (
-                        <div className="space-y-3 text-sm text-white/80">
-                          <div className="rounded-lg bg-[#17181b] p-2">
-                            <div className="mb-2 flex items-center justify-between text-[11px] text-slate-300">
-                              <span>Jake Lee</span>
-                              <span className="font-medium text-white">21</span>
-                            </div>
-                            <div className="flex items-center justify-between text-[11px] text-slate-300">
-                              <span>Xian Huang</span>
-                              <span className="font-medium text-white">19</span>
-                            </div>
-                          </div>
-                          <div className="rounded-lg border border-white/8 bg-white/4 p-2 text-[11px] text-slate-300">
-                            Score text
-                          </div>
-                          <button className="w-full rounded-xl bg-white/8 px-3 py-2 text-sm text-white">
-                            Share result
-                          </button>
+                        <div className="text-right">
+                          <p className="text-lg font-bold text-[#17191d]">{player.wins}</p>
+                          <p className="text-[10px] uppercase tracking-[0.18em] text-[#6b7077]">wins</p>
                         </div>
-                      )}
-                    </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
+              </section>
+            </>
+          )}
+
+          {tab === "players" && (
+            <section className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
+              <div className="rounded-[26px] border border-[#d9d3d0] bg-[#171a1d] p-5 text-white shadow-[0_16px_30px_rgba(17,24,39,0.12)]">
+                <p className="text-[10px] uppercase tracking-[0.25em] text-slate-400">Add player</p>
+                <h2 className="mt-2 text-2xl font-semibold">Player profile</h2>
+
+                <form onSubmit={addPlayer} className="mt-5 space-y-4">
+                  <div>
+                    <label className="mb-2 block text-xs uppercase tracking-[0.2em] text-slate-400">
+                      Name
+                    </label>
+                    <input
+                      type="text"
+                      value={newPlayer.name}
+                      onChange={(event) => setNewPlayer((current) => ({ ...current, name: event.target.value }))}
+                      className="w-full rounded-xl border border-white/10 bg-[#101316] px-3 py-2.5 text-sm text-white outline-none"
+                      placeholder="Enter player name"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-xs uppercase tracking-[0.2em] text-slate-400">
+                      Skill level
+                    </label>
+                    <select
+                      value={newPlayer.skill}
+                      onChange={(event) =>
+                        setNewPlayer((current) => ({ ...current, skill: event.target.value }))
+                      }
+                      className="w-full rounded-xl border border-white/10 bg-[#101316] px-3 py-2.5 text-sm text-white outline-none"
+                    >
+                      <option value="Beginner">Beginner</option>
+                      <option value="Intermediate">Intermediate</option>
+                      <option value="Advanced">Advanced</option>
+                      <option value="Pro">Pro</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-xs uppercase tracking-[0.2em] text-slate-400">
+                      Club/Team
+                    </label>
+                    <input
+                      type="text"
+                      value={newPlayer.club}
+                      onChange={(event) => setNewPlayer((current) => ({ ...current, club: event.target.value }))}
+                      className="w-full rounded-xl border border-white/10 bg-[#101316] px-3 py-2.5 text-sm text-white outline-none"
+                      placeholder="WSS"
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="w-full rounded-full bg-gradient-to-r from-violet-500 to-indigo-500 px-4 py-3 text-sm font-semibold text-white"
+                  >
+                    Save player
+                  </button>
+                </form>
               </div>
-            ))}
-          </div>
+
+              <div className="rounded-[26px] border border-[#d9d3d0] bg-[#f9f7f5] p-5 shadow-[0_10px_22px_rgba(0,0,0,0.04)]">
+                <p className="text-[10px] uppercase tracking-[0.25em] text-[#696f77]">Roster</p>
+                <h2 className="mt-2 text-2xl font-semibold text-[#181a1d]">Player database</h2>
+
+                <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                  {players.map((player) => (
+                    <div key={player.id} className="rounded-[20px] border border-[#e4dfdc] bg-white p-4">
+                      <div className="flex items-center justify-between">
+                        <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[#17191d] text-sm font-semibold text-white">
+                          {player.name.slice(0, 2).toUpperCase()}
+                        </span>
+                        <span className="rounded-full bg-[#eef2ff] px-2 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-[#4f46e5]">
+                          {player.skill}
+                        </span>
+                      </div>
+
+                      <p className="mt-3 text-lg font-semibold text-[#17191d]">{player.name}</p>
+                      <p className="text-sm text-[#626972]">{player.club}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </section>
+          )}
+
+          {tab === "matches" && (
+            <section className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
+              <div className="rounded-[26px] border border-[#d9d3d0] bg-[#191c20] p-5 text-white shadow-[0_16px_30px_rgba(17,24,39,0.12)]">
+                <p className="text-[10px] uppercase tracking-[0.25em] text-slate-400">Record</p>
+                <h2 className="mt-2 text-2xl font-semibold">Match results</h2>
+
+                <div className="mt-5 space-y-4">
+                  <div>
+                    <label className="mb-2 block text-xs uppercase tracking-[0.2em] text-slate-400">
+                      Player A
+                    </label>
+                    <select
+                      className="w-full rounded-xl border border-white/10 bg-[#101316] px-3 py-2.5 text-sm text-white outline-none"
+                      value={matchDraft.playerAId}
+                      onChange={(event) =>
+                        setMatchDraft((current) => ({ ...current, playerAId: event.target.value }))
+                      }
+                    >
+                      {players.map((player) => (
+                        <option key={player.id} value={player.id}>
+                          {player.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-xs uppercase tracking-[0.2em] text-slate-400">
+                      Player B
+                    </label>
+                    <select
+                      className="w-full rounded-xl border border-white/10 bg-[#101316] px-3 py-2.5 text-sm text-white outline-none"
+                      value={matchDraft.playerBId}
+                      onChange={(event) =>
+                        setMatchDraft((current) => ({ ...current, playerBId: event.target.value }))
+                      }
+                    >
+                      {players.map((player) => (
+                        <option key={player.id} value={player.id}>
+                          {player.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="rounded-[16px] border border-white/10 bg-[#101316] p-3">
+                      <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-slate-400">
+                        A score
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        value={liveScore.playerA}
+                        onChange={(event) =>
+                          setLiveScore((current) => ({ ...current, playerA: Number(event.target.value) || 0 }))
+                        }
+                        className="w-full rounded-xl border border-white/10 bg-[#171b1f] px-3 py-2 text-sm text-white outline-none"
+                      />
+                    </div>
+
+                    <div className="rounded-[16px] border border-white/10 bg-[#101316] p-3">
+                      <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-slate-400">
+                        B score
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        value={liveScore.playerB}
+                        onChange={(event) =>
+                          setLiveScore((current) => ({ ...current, playerB: Number(event.target.value) || 0 }))
+                        }
+                        className="w-full rounded-xl border border-white/10 bg-[#171b1f] px-3 py-2 text-sm text-white outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-xs uppercase tracking-[0.2em] text-slate-400">
+                      Notes
+                    </label>
+                    <input
+                      type="text"
+                      value={matchDraft.note}
+                      onChange={(event) =>
+                        setMatchDraft((current) => ({ ...current, note: event.target.value }))
+                      }
+                      className="w-full rounded-xl border border-white/10 bg-[#101316] px-3 py-2.5 text-sm text-white outline-none"
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={saveMatch}
+                    className="w-full rounded-full bg-gradient-to-r from-emerald-500 to-cyan-500 px-4 py-3 text-sm font-semibold text-white"
+                  >
+                    Save result
+                  </button>
+                </div>
+              </div>
+
+              <div className="rounded-[26px] border border-[#d9d3d0] bg-[#f9f7f5] p-5 shadow-[0_10px_22px_rgba(0,0,0,0.04)]">
+                <p className="text-[10px] uppercase tracking-[0.25em] text-[#696f77]">Recent activity</p>
+                <h2 className="mt-2 text-2xl font-semibold text-[#181a1d]">Match history</h2>
+
+                <div className="mt-5 space-y-3">
+                  {recentMatches.map((match) => {
+                    const playerA = playerMap[match.playerAId];
+                    const playerB = playerMap[match.playerBId];
+                    const winner = playerMap[match.winnerId];
+
+                    return (
+                      <div key={match.id} className="rounded-[20px] border border-[#e4dfdd] bg-white p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-lg font-semibold text-[#17191d]">
+                              {playerA?.name ?? "Unknown"} vs {playerB?.name ?? "Unknown"}
+                            </p>
+                            <p className="text-sm text-[#636b74]">{match.note}</p>
+                          </div>
+                          <span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-medium uppercase tracking-[0.16em] text-emerald-700">
+                            {winner?.name ?? "Winner"}
+                          </span>
+                        </div>
+
+                        <div className="mt-3 flex items-center justify-between rounded-[14px] bg-[#f6f7f8] px-3 py-2 text-sm text-[#1c1f22]">
+                          <span>{match.playerAScore}</span>
+                          <span className="text-[#727980]">:</span>
+                          <span>{match.playerBScore}</span>
+                        </div>
+
+                        <p className="mt-2 text-[11px] uppercase tracking-[0.18em] text-[#707782]">
+                          {new Date(match.createdAt).toLocaleDateString()}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </section>
+          )}
         </main>
       </div>
     </div>
