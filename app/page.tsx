@@ -56,6 +56,11 @@ type TabName = "dashboard" | "players" | "teams" | "tournaments" | "standings" |
 const STORAGE_KEY = "wss-badminton-db-v1";
 const defaultGroupOptions = ["WSS", "FFBC", "SW", "SSBC", "DBCC", "DCSC"];
 const normalizeGroup = (value: string | undefined) => value?.trim().toUpperCase() ?? "";
+const normalizeScoreInput = (value: string) => {
+  const digits = value.replace(/\D/g, "");
+  if (!digits) return "";
+  return String(Math.min(30, Number(digits)));
+};
 const easternTimeZone = "America/Toronto";
 
 const easternLocalToIso = (value: string) => {
@@ -622,6 +627,31 @@ export default function Home() {
     setLiveScore({ playerA: fixture.match ? String(fixture.teamAScore) : "", playerB: fixture.match ? String(fixture.teamBScore) : "" });
   };
 
+  const selectScoringTeam = (side: "a" | "b", teamId: string) => {
+    const nextDraft = { ...matchDraft, [side === "a" ? "teamAId" : "teamBId"]: teamId };
+    setMatchDraft(nextDraft);
+    const teamAId = nextDraft.teamAId;
+    const teamBId = nextDraft.teamBId;
+    if (!teamAId || !teamBId) {
+      setLiveScore({ playerA: "", playerB: "" });
+      return;
+    }
+    const fixture = tournamentFixtures.find((item) =>
+      (item.teamA.id === teamAId && item.teamB.id === teamBId) ||
+      (item.teamA.id === teamBId && item.teamB.id === teamAId),
+    );
+    if (!fixture?.match) {
+      setLiveScore({ playerA: "", playerB: "" });
+      return;
+    }
+    const storedTeamAFirst = fixture.match.teamAId === teamAId;
+    setLiveScore({
+      playerA: String(storedTeamAFirst ? fixture.match.playerAScore : fixture.match.playerBScore),
+      playerB: String(storedTeamAFirst ? fixture.match.playerBScore : fixture.match.playerAScore),
+    });
+    setEditingMatchId(fixture.match.id);
+  };
+
   const savePlayoffResult = async (fixture: { key: string; teamA?: Team; teamB?: Team; match?: MatchRecord }) => {
     if (!fixture.teamA || !fixture.teamB || !playoffTournament) {
       setNotice("This playoff match is waiting for the earlier round to finish.");
@@ -924,10 +954,9 @@ export default function Home() {
                       <select
                         className="w-full rounded-xl border border-white/10 bg-[#121417] px-3 py-2 text-sm text-white outline-none"
                         value={matchDraft.teamAId}
-                        onChange={(event) =>
-                          setMatchDraft((current) => ({ ...current, teamAId: event.target.value }))
-                        }
+                        onChange={(event) => selectScoringTeam("a", event.target.value)}
                       >
+                        <option value="">Select team</option>
                         {eligibleTeamA.map((team) => (
                           <option key={team.id} value={team.id}>
                             {teamLabel(team)}
@@ -936,7 +965,7 @@ export default function Home() {
                       </select>
 
                       <div className="mt-5 flex items-center justify-between">
-                        <input type="text" inputMode="numeric" pattern="[0-9]*" value={liveScore.playerA} onChange={(event) => setLiveScore((current) => ({ ...current, playerA: event.target.value.replace(/\D/g, "").slice(0, 2).replace(/^([3-9][1-9])$/, "30") }))} placeholder="Score (0-30)" className="w-36 rounded-xl border border-white/10 bg-[#121417] px-3 py-2 text-4xl font-bold text-white outline-none" />
+                        <input type="text" inputMode="numeric" pattern="[0-9]*" value={liveScore.playerA} onChange={(event) => setLiveScore((current) => ({ ...current, playerA: normalizeScoreInput(event.target.value) }))} placeholder="Score (0-30)" className="w-36 rounded-xl border border-white/10 bg-[#121417] px-3 py-2 text-4xl font-bold text-white outline-none" />
                       </div>
                     </div>
 
@@ -947,10 +976,9 @@ export default function Home() {
                       <select
                         className="w-full rounded-xl border border-white/10 bg-[#121417] px-3 py-2 text-sm text-white outline-none"
                         value={matchDraft.teamBId}
-                        onChange={(event) =>
-                          setMatchDraft((current) => ({ ...current, teamBId: event.target.value }))
-                        }
+                        onChange={(event) => selectScoringTeam("b", event.target.value)}
                       >
+                        <option value="">Select team</option>
                         {eligibleTeamB.map((team) => (
                           <option key={team.id} value={team.id}>
                             {teamLabel(team)}
@@ -959,7 +987,7 @@ export default function Home() {
                       </select>
 
                       <div className="mt-5 flex items-center justify-between">
-                        <input type="text" inputMode="numeric" pattern="[0-9]*" value={liveScore.playerB} onChange={(event) => setLiveScore((current) => ({ ...current, playerB: event.target.value.replace(/\D/g, "").slice(0, 2).replace(/^([3-9][1-9])$/, "30") }))} placeholder="Score (0-30)" className="w-36 rounded-xl border border-white/10 bg-[#121417] px-3 py-2 text-4xl font-bold text-white outline-none" />
+                        <input type="text" inputMode="numeric" pattern="[0-9]*" value={liveScore.playerB} onChange={(event) => setLiveScore((current) => ({ ...current, playerB: normalizeScoreInput(event.target.value) }))} placeholder="Score (0-30)" className="w-36 rounded-xl border border-white/10 bg-[#121417] px-3 py-2 text-4xl font-bold text-white outline-none" />
                       </div>
                     </div>
                   </div>
