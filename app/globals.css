@@ -1,17 +1,19 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f3f1ef;
-  --foreground: #1d1d1f;
-  --panel: #191c20;
-  --panel-soft: #f9f7f5;
-  --panel-border: rgba(17, 24, 39, 0.08);
+  --background: #071a2d;
+  --foreground: #f7f9fc;
+  --panel: #0d2b4a;
+  --panel-soft: #f7f8fa;
+  --gold: #f7c62f;
+  --gold-deep: #c99418;
+  --panel-border: rgba(247, 198, 47, 0.22);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-poppins);
   --font-mono: var(--font-geist-mono);
 }
 
@@ -23,10 +25,10 @@ body {
   margin: 0;
   min-height: 100vh;
   background:
-    radial-gradient(circle at top left, rgba(255,255,255,0.75), transparent 20%),
-    linear-gradient(180deg, #f4f1ef 0%, #ece8e4 100%);
+    radial-gradient(circle at 15% 0%, rgba(35, 84, 126, 0.3), transparent 28%),
+    linear-gradient(180deg, #071a2d 0%, #0b2440 100%);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-poppins), sans-serif;
 }
 
 * {
@@ -49,10 +51,22 @@ input[type="number"] {
   appearance: textfield;
 }
 
+[class*="from-violet-500"],
+[class*="from-emerald-500"] {
+  background-image: linear-gradient(100deg, #c99418, #f7c62f) !important;
+  color: #071a2d !important;
+  box-shadow: 0 10px 24px rgba(247, 198, 47, 0.2);
+}
+
 button {
   cursor: pointer;
 }
 
 ::selection {
-  background: rgba(59,130,246,0.25);
+  background: rgba(247,198,47,0.35);
+}
+
+/* Keep the existing light information surfaces legible inside the navy shell. */
+input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  filter: invert(1) sepia(1) saturate(5) hue-rotate(350deg);
 }

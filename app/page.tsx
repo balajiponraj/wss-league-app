@@ -782,19 +782,19 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-[#f3f1ef] px-4 py-6 text-[#1d1d1f] sm:px-6 lg:px-10">
+    <div className="min-h-screen bg-[#071a2d] px-4 py-6 text-white sm:px-6 lg:px-10">
       <div className="mx-auto max-w-7xl">
-        <header className="mb-6 rounded-[28px] border border-[#dad3cf] bg-[#f9f7f5]/90 px-5 py-4 shadow-[0_18px_40px_rgba(17,24,39,0.07)] backdrop-blur-sm">
+        <header className="mb-6 rounded-[28px] border border-[#d7a91d]/40 bg-[#0d2b4a] px-5 py-4 shadow-[0_18px_40px_rgba(0,0,0,0.24)] backdrop-blur-sm">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#1a1d20] text-lg font-bold text-white">
-                W
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#f7c62f] text-lg font-bold text-[#071a2d]">
+                <span aria-hidden="true">🏸</span>
               </div>
               <div>
                 <p className="text-[10px] font-semibold uppercase tracking-[0.26em] text-[#61656d]">
-                  WHITBY SMASH SQUAD
+                  WSS LEAGUE · WHITBY SMASH SQUAD
                 </p>
-                <h1 className="text-xl font-semibold text-[#111215]">WSS Badminton League</h1>
+                <h1 className="text-xl font-semibold text-white">WSS Badminton League</h1>
               </div>
             </div>
 
@@ -811,14 +811,14 @@ export default function Home() {
                   onClick={() => setTab(item.key as TabName)}
                   className={`rounded-full px-4 py-2 text-sm font-medium transition ${
                     tab === item.key
-                      ? "bg-[#17191d] text-white shadow-md"
-                      : "bg-white text-[#3b3d42] hover:bg-[#efefee]"
+                      ? "bg-[#f7c62f] text-[#071a2d] shadow-md"
+                      : "bg-[#f7f8fa] text-[#18324f] hover:bg-[#fce6a0]"
                   }`}
                 >
                   {item.label}
                 </button>
               ))}
-              {isAuthenticated ? <button type="button" onClick={() => void handleLogout()} className="rounded-full bg-white px-4 py-2 text-sm font-medium text-[#3b3d42]">Log out</button> : <button type="button" onClick={() => setShowLogin(true)} className="rounded-full bg-[#17191d] px-4 py-2 text-sm font-medium text-white">Admin login</button>}
+              {isAuthenticated ? <button type="button" onClick={() => void handleLogout()} className="rounded-full bg-[#f7f8fa] px-4 py-2 text-sm font-medium text-[#18324f]">Log out</button> : <button type="button" onClick={() => setShowLogin(true)} className="rounded-full bg-[#f7c62f] px-4 py-2 text-sm font-semibold text-[#071a2d]">Admin login</button>}
             </nav>
           </div>
         </header>
@@ -944,7 +944,7 @@ export default function Home() {
               <section className="rounded-[26px] border border-[#d9d3d0] bg-[#f9f7f5] p-5">
                 <div className="flex items-center justify-between gap-3">
                   <div><p className="text-[10px] uppercase tracking-[0.25em] text-[#696f77]">Round robin fixtures</p><h2 className="mt-1 text-2xl font-semibold text-[#181a1d]">{selectedTournament?.name ?? "Select a tournament"}</h2></div>
-                  <div className="flex items-center gap-3"><div className="text-right"><p className="text-sm font-semibold text-[#30343a]">{tournamentFixtures.length} total</p><p className="text-xs uppercase tracking-[0.14em] text-emerald-700">{tournamentFixtures.filter((fixture) => fixture.match).length} completed</p></div><button type="button" onClick={() => void clearResults()} className="rounded-full border border-rose-200 px-3 py-1.5 text-xs font-semibold text-rose-700">Clear results</button></div>
+                  <div className="flex items-center gap-3"><div className="text-right"><p className="text-sm font-semibold text-[#30343a]">{tournamentFixtures.length} total</p><p className="text-xs uppercase tracking-[0.14em] text-[#a8790e]">{tournamentFixtures.filter((fixture) => fixture.match).length} completed</p></div><button type="button" onClick={() => void clearResults()} className="rounded-full border border-[#e2c15a] px-3 py-1.5 text-xs font-semibold text-[#8d650b]">Clear results</button></div>
                 </div>
                 <div className="mt-5">
                   <select value={fixtureTeamFilter} onChange={(event) => setFixtureTeamFilter(event.target.value)} className="w-full rounded-xl border border-[#ded8d4] bg-white px-3 py-2.5 text-sm text-[#17191d] outline-none"><option value="">Select a team to view its results</option>{tournamentTeams.map((team) => <option key={team.id} value={team.id}>{teamLabel(team)}</option>)}</select>
