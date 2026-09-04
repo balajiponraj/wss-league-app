@@ -64,6 +64,7 @@ drop policy if exists "WSS players can be deleted" on public.players;
 drop policy if exists "WSS matches can be read" on public.matches;
 drop policy if exists "WSS matches can be added" on public.matches;
 drop policy if exists "WSS matches can be updated" on public.matches;
+drop policy if exists "WSS matches can be deleted" on public.matches;
 drop policy if exists "WSS teams can be read" on public.teams;
 drop policy if exists "WSS teams can be added" on public.teams;
 drop policy if exists "WSS teams can be deleted" on public.teams;
@@ -103,6 +104,11 @@ create policy "WSS matches can be updated"
   to anon, authenticated
   using (true)
   with check (true);
+
+create policy "WSS matches can be deleted"
+  on public.matches for delete
+  to anon, authenticated
+  using (true);
 
 create policy "WSS teams can be read"
   on public.teams for select

@@ -411,6 +411,27 @@ export default function Home() {
     setNotice(`${tournament.name} was deleted.`);
   };
 
+  const editMatch = (fixture: { teamA: Team; teamB: Team; match?: MatchRecord; teamAScore?: number; teamBScore?: number }) => {
+    if (!fixture.match) return;
+    setMatchDraft((current) => ({ ...current, tournamentId: fixture.match?.tournamentId ?? current.tournamentId, teamAId: fixture.teamA.id, teamBId: fixture.teamB.id }));
+    setLiveScore({ playerA: String(fixture.teamAScore ?? ""), playerB: String(fixture.teamBScore ?? "") });
+    setNotice("Result loaded. Edit the scores and save the updated result.");
+  };
+
+  const clearResults = async () => {
+    if (!window.confirm("Clear all saved match results? Players, pairs, and leagues will remain.")) return;
+    if (hasSupabaseConfig && supabase) {
+      const { error } = await supabase.from("matches").delete().neq("id", "");
+      if (error) {
+        setNotice(`Could not clear results: ${error.message}`);
+        return;
+      }
+    }
+    setMatches([]);
+    setLiveScore({ playerA: "", playerB: "" });
+    setNotice("All match results were cleared.");
+  };
+
   const addTeam = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!teamDraft.playerAId || !teamDraft.playerBId || teamDraft.playerAId === teamDraft.playerBId) {
@@ -750,10 +771,10 @@ export default function Home() {
               <section className="rounded-[26px] border border-[#d9d3d0] bg-[#f9f7f5] p-5">
                 <div className="flex items-center justify-between gap-3">
                   <div><p className="text-[10px] uppercase tracking-[0.25em] text-[#696f77]">Round robin fixtures</p><h2 className="mt-1 text-2xl font-semibold text-[#181a1d]">{selectedTournament?.name ?? "Select a tournament"}</h2></div>
-                  <div className="text-right"><p className="text-sm font-semibold text-[#30343a]">{tournamentFixtures.length} total</p><p className="text-xs uppercase tracking-[0.14em] text-emerald-700">{tournamentFixtures.filter((fixture) => fixture.match).length} completed</p></div>
+                  <div className="flex items-center gap-3"><div className="text-right"><p className="text-sm font-semibold text-[#30343a]">{tournamentFixtures.length} total</p><p className="text-xs uppercase tracking-[0.14em] text-emerald-700">{tournamentFixtures.filter((fixture) => fixture.match).length} completed</p></div><button type="button" onClick={() => void clearResults()} className="rounded-full border border-rose-200 px-3 py-1.5 text-xs font-semibold text-rose-700">Clear results</button></div>
                 </div>
                 <div className="mt-5 grid gap-3 md:grid-cols-2">
-                  {tournamentFixtures.map((fixture) => <div key={`${fixture.teamA.id}-${fixture.teamB.id}`} className="rounded-[18px] border border-[#e4dfdc] bg-white p-4"><div className="flex items-center justify-between gap-3"><p className="font-semibold text-[#17191d]">{teamLabel(fixture.teamA)} <span className="text-[#8a9097]">vs</span> {teamLabel(fixture.teamB)}</p><span className={`rounded-full px-2 py-1 text-[10px] uppercase tracking-[0.14em] ${fixture.match ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>{fixture.match ? "Completed" : "Pending"}</span></div><p className="mt-3 text-sm text-[#626972]">{fixture.match ? `${fixture.teamAScore} : ${fixture.teamBScore}` : "No score yet"}</p></div>)}
+                  {tournamentFixtures.map((fixture) => <div key={`${fixture.teamA.id}-${fixture.teamB.id}`} className="rounded-[18px] border border-[#e4dfdc] bg-white p-4"><div className="flex items-center justify-between gap-3"><p className="font-semibold text-[#17191d]">{teamLabel(fixture.teamA)} <span className="text-[#8a9097]">vs</span> {teamLabel(fixture.teamB)}</p><span className={`rounded-full px-2 py-1 text-[10px] uppercase tracking-[0.14em] ${fixture.match ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>{fixture.match ? "Completed" : "Pending"}</span></div><p className="mt-3 text-sm text-[#626972]">{fixture.match ? `${fixture.teamAScore} : ${fixture.teamBScore}` : "No score yet"}</p>{fixture.match && <button type="button" onClick={() => editMatch(fixture)} className="mt-3 rounded-full border border-[#cdd8f7] px-3 py-1.5 text-xs font-semibold text-[#3949ab]">Edit result</button>}</div>)}
                   {!tournamentFixtures.length && <p className="text-sm text-[#626972]">Select a tournament with saved pairs to see its fixtures.</p>}
                 </div>
               </section>

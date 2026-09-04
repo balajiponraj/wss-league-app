@@ -13,6 +13,9 @@ create policy "WSS matches can be updated"
   using (true)
   with check (true);
 
+drop policy if exists "WSS matches can be deleted" on public.matches;
+create policy "WSS matches can be deleted" on public.matches for delete to anon, authenticated using (true);
+
 drop policy if exists "WSS players can be deleted" on public.players;
 create policy "WSS players can be deleted" on public.players for delete to anon, authenticated using (true);
 drop policy if exists "WSS teams can be deleted" on public.teams;
