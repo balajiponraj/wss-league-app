@@ -51,6 +51,7 @@ type TabName = "dashboard" | "players" | "teams" | "tournaments" | "standings" |
 
 const STORAGE_KEY = "wss-badminton-db-v1";
 const groupOptions = ["WSS", "FFBC", "SW", "SSBC", "DBCC", "DCSC"];
+const normalizeGroup = (value: string | undefined) => value?.trim().toUpperCase() ?? "";
 const easternTimeZone = "America/Toronto";
 
 const easternLocalToIso = (value: string) => {
@@ -272,12 +273,12 @@ export default function Home() {
     `${playerMap[team.playerAId]?.name ?? "Player"} / ${playerMap[team.playerBId]?.name ?? "Player"} (${teamGroup(team)})`;
 
   const teamGroup = (team: Team) => {
-    const playerGroup = playerMap[team.playerAId]?.group_name;
-    return playerGroup && groupOptions.includes(playerGroup) ? playerGroup : team.group_name;
+    const playerGroup = normalizeGroup(playerMap[team.playerAId]?.group_name);
+    return groupOptions.includes(playerGroup) ? playerGroup : normalizeGroup(team.group_name);
   };
 
   const teamBelongsToGroup = (team: Team, group: string | undefined) =>
-    Boolean(group) && (team.group_name === group || playerMap[team.playerAId]?.group_name === group || playerMap[team.playerBId]?.group_name === group);
+    Boolean(group) && (normalizeGroup(team.group_name) === normalizeGroup(group) || normalizeGroup(playerMap[team.playerAId]?.group_name) === normalizeGroup(group) || normalizeGroup(playerMap[team.playerBId]?.group_name) === normalizeGroup(group));
 
   const selectedTournament = tournaments.find((tournament) => tournament.id === matchDraft.tournamentId);
   const tournamentTeams = teams.filter((team) => team.tournamentId === selectedTournament?.id);
@@ -572,11 +573,9 @@ export default function Home() {
   const saveMatch = async () => {
     const teamA = teamMap[matchDraft.teamAId];
     const teamB = teamMap[matchDraft.teamBId];
-    const teamAIsValid = Boolean(selectedTournament && teamA?.tournamentId === selectedTournament.id && teamBelongsToGroup(teamA, selectedTournament.group_a));
-    const teamBGroup = selectedTournament?.format === "external" ? selectedTournament.group_b : selectedTournament?.group_a;
-    const teamBIsValid = Boolean(selectedTournament && teamB?.tournamentId === selectedTournament.id && teamBelongsToGroup(teamB, teamBGroup));
-    if (!selectedTournament || !teamA || !teamB || teamA.id === teamB.id || !teamAIsValid || !teamBIsValid) {
-      setNotice("Choose one valid team from each side of the selected tournament.");
+    const teamsBelongToTournament = Boolean(selectedTournament && teamA?.tournamentId === selectedTournament.id && teamB?.tournamentId === selectedTournament.id);
+    if (!selectedTournament || !teamA || !teamB || teamA.id === teamB.id || !teamsBelongToTournament) {
+      setNotice("Choose two different teams from the selected tournament.");
       return;
     }
 
