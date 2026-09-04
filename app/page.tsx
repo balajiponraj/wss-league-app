@@ -29,6 +29,7 @@ type Team = {
   playerAId: string;
   playerBId: string;
   group_name: string;
+  tournamentId?: string;
 };
 
 type Tournament = {
@@ -39,6 +40,9 @@ type Tournament = {
   created_at: string;
   event_date: string;
   location: string;
+  group_a: string;
+  group_b: string;
+  teams_per_group: number;
 };
 
 type TabName = "dashboard" | "players" | "teams" | "tournaments" | "standings" | "matches";
@@ -99,7 +103,8 @@ export default function Home() {
     note: "",
   });
   const [teamDraft, setTeamDraft] = useState({ name: "", playerAId: "", playerBId: "", group_name: "A" });
-  const [tournamentDraft, setTournamentDraft] = useState({ name: "", format: "internal" as "internal" | "external", event_date: "", location: "" });
+  const [tournamentDraft, setTournamentDraft] = useState({ name: "", format: "internal" as "internal" | "external", event_date: "", location: "", group_a: "WSS", group_b: "DCSC", teams_per_group: 7 });
+  const [pairNames, setPairNames] = useState<{ group: "a" | "b"; index: number; player1: string; player2: string }[]>([]);
   const [standingsTournamentId, setStandingsTournamentId] = useState("");
   const [notice, setNotice] = useState("Local storage mode enabled. Connect Supabase for live database storage.");
 
@@ -193,7 +198,7 @@ export default function Home() {
         }),
       );
     }
-  }, [players, matches]);
+  }, [players, matches, teams, tournaments]);
 
   const leaderboard = useMemo(() => {
     const tournamentId = matchDraft.tournamentId;
@@ -225,6 +230,17 @@ export default function Home() {
     team.name || `${playerMap[team.playerAId]?.name ?? "Player"} / ${playerMap[team.playerBId]?.name ?? "Player"}`;
 
   const selectedTournament = tournaments.find((tournament) => tournament.id === matchDraft.tournamentId);
+  const tournamentFixtures = useMemo(() => {
+    if (!selectedTournament) return [];
+    const tournamentTeams = teams.filter((team) => team.tournamentId === selectedTournament.id);
+    const fixtures: { teamA: Team; teamB: Team; match?: MatchRecord }[] = [];
+    tournamentTeams.forEach((teamA, index) => tournamentTeams.slice(index + 1).forEach((teamB) => {
+      if (selectedTournament.format === "external" && teamA.group_name === teamB.group_name) return;
+      const match = matches.find((item) => item.tournamentId === selectedTournament.id && ((item.teamAId === teamA.id && item.teamBId === teamB.id) || (item.teamAId === teamB.id && item.teamBId === teamA.id)));
+      fixtures.push({ teamA, teamB, match });
+    }));
+    return fixtures;
+  }, [matches, selectedTournament, teams]);
   const eligibleTeamB = teams.filter((team) => {
     const teamA = teamMap[matchDraft.teamAId];
     if (!teamA || team.id === teamA.id) return false;
@@ -232,16 +248,23 @@ export default function Home() {
   });
 
   const fixtureCount = (tournament: Tournament) => {
-    if (tournament.format === "internal") return (teams.length * Math.max(teams.length - 1, 0)) / 2;
-    const groupA = teams.filter((team) => team.group_name === "A").length;
-    const groupB = teams.filter((team) => team.group_name === "B").length;
+    const tournamentTeams = teams.filter((team) => team.tournamentId === tournament.id);
+    if (tournament.format === "internal") return (tournamentTeams.length * Math.max(tournamentTeams.length - 1, 0)) / 2;
+    const groupA = tournamentTeams.filter((team) => team.group_name === tournament.group_a).length;
+    const groupB = tournamentTeams.filter((team) => team.group_name === tournament.group_b).length;
     return groupA * groupB;
   };
+
+  const tournamentPairs = pairNames.length
+    ? pairNames
+    : (tournamentDraft.format === "internal" ? (["a"] as const) : (["a", "b"] as const)).flatMap((group) =>
+        Array.from({ length: tournamentDraft.teams_per_group }, (_, index) => ({ group, index, player1: "", player2: "" })),
+      );
 
   const standingsTournament = tournaments.find((tournament) => tournament.id === standingsTournamentId) ?? tournaments[0];
   const teamStandings = useMemo(() => {
     const tournamentMatches = matches.filter((match) => match.tournamentId === standingsTournament?.id && match.teamAId && match.teamBId);
-    return teams.map((team) => {
+    return teams.filter((team) => team.tournamentId === standingsTournament?.id).map((team) => {
       const teamMatches = tournamentMatches.filter((match) => match.teamAId === team.id || match.teamBId === team.id);
       const wins = teamMatches.filter((match) => match.winnerId === team.playerAId || match.winnerId === team.playerBId).length;
       const pointsFor = teamMatches.reduce((total, match) => total + (match.teamAId === team.id ? match.playerAScore : match.playerBScore), 0);
@@ -318,6 +341,11 @@ export default function Home() {
     setTeamDraft((current) => ({ ...current, name: "" }));
   };
 
+  const resizePairNames = (format: "internal" | "external", count: number) => {
+    const groups = format === "internal" ? (["a"] as const) : (["a", "b"] as const);
+    setPairNames(groups.flatMap((group) => Array.from({ length: count }, (_, index) => ({ group, index, player1: "", player2: "" }))));
+  };
+
   const addTournament = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!tournamentDraft.name.trim()) {
@@ -333,7 +361,25 @@ export default function Home() {
       created_at: new Date().toISOString(),
       event_date: tournamentDraft.event_date,
       location: tournamentDraft.location.trim(),
+      group_a: tournamentDraft.group_a,
+      group_b: tournamentDraft.format === "internal" ? tournamentDraft.group_a : tournamentDraft.group_b,
+      teams_per_group: tournamentDraft.teams_per_group,
     };
+
+    const requiredPairs = tournamentPairs;
+    if (requiredPairs.some((pair) => !pair.player1.trim() || !pair.player2.trim())) {
+      setNotice("Enter both player names for every tournament pair.");
+      return;
+    }
+
+    const createdPlayers: Player[] = [];
+    const createdTeams: Team[] = [];
+    requiredPairs.forEach((pair) => {
+      const playerA = { id: createId(), name: pair.player1.trim(), group_name: pair.group === "a" ? createdTournament.group_a : createdTournament.group_b };
+      const playerB = { id: createId(), name: pair.player2.trim(), group_name: playerA.group_name };
+      createdPlayers.push(playerA, playerB);
+      createdTeams.push({ id: createId(), name: `Pair${pair.index + 1}`, playerAId: playerA.id, playerBId: playerB.id, group_name: playerA.group_name, tournamentId: createdTournament.id });
+    });
 
     if (hasSupabaseConfig && supabase) {
       const { error } = await supabase.from("tournaments").insert([createdTournament]);
@@ -341,10 +387,19 @@ export default function Home() {
         setNotice(`League save failed: ${error.message}`);
         return;
       }
+      const { error: playersError } = await supabase.from("players").insert(createdPlayers);
+      const { error: teamsError } = await supabase.from("teams").insert(createdTeams);
+      if (playersError || teamsError) {
+        setNotice(`Pair save failed: ${playersError?.message ?? teamsError?.message}`);
+        return;
+      }
     }
     setTournaments((current) => [...current, createdTournament]);
+    setPlayers((current) => [...current, ...createdPlayers]);
+    setTeams((current) => [...current, ...createdTeams]);
     setMatchDraft((current) => ({ ...current, tournamentId: createdTournament.id }));
-    setTournamentDraft({ name: "", format: "internal", event_date: "", location: "" });
+    setTournamentDraft({ name: "", format: "internal", event_date: "", location: "", group_a: "WSS", group_b: "DCSC", teams_per_group: 7 });
+    setPairNames([]);
     setNotice(`${createdTournament.name} created as an ${createdTournament.format} tournament.`);
   };
 
@@ -363,8 +418,9 @@ export default function Home() {
 
     const winnerId = liveScore.playerA > liveScore.playerB ? teamA.playerAId : teamB.playerAId;
 
+    const existingMatch = matches.find((match) => match.tournamentId === matchDraft.tournamentId && ((match.teamAId === teamA.id && match.teamBId === teamB.id) || (match.teamAId === teamB.id && match.teamBId === teamA.id)));
     const record: MatchRecord = {
-      id: createId(),
+      id: existingMatch?.id ?? createId(),
       playerAId: teamA.playerAId,
       playerBId: teamB.playerAId,
       playerAScore: liveScore.playerA,
@@ -378,10 +434,12 @@ export default function Home() {
     };
 
     if (hasSupabaseConfig && supabase) {
-      const { error } = await supabase.from("matches").insert([record]);
+      const result = existingMatch
+        ? await supabase.from("matches").update(record).eq("id", existingMatch.id)
+        : await supabase.from("matches").insert([record]);
 
-      if (error) {
-        setNotice(`Supabase match save failed: ${error.message}`);
+      if (result.error) {
+        setNotice(`Supabase match save failed: ${result.error.message}`);
         return;
       }
 
@@ -389,8 +447,8 @@ export default function Home() {
       setMatches((data ?? [record]) as MatchRecord[]);
       setNotice("Match result saved to Supabase.");
     } else {
-      setMatches((current) => [record, ...current]);
-      setNotice("Match result saved to local database.");
+      setMatches((current) => existingMatch ? current.map((match) => match.id === record.id ? record : match) : [record, ...current]);
+      setNotice(existingMatch ? "Match result updated locally." : "Match result saved to local database.");
     }
 
     setLiveScore({ playerA: 0, playerB: 0 });
@@ -599,6 +657,17 @@ export default function Home() {
                   </div>
                 </div>
               </section>
+
+              <section className="rounded-[26px] border border-[#d9d3d0] bg-[#f9f7f5] p-5">
+                <div className="flex items-center justify-between gap-3">
+                  <div><p className="text-[10px] uppercase tracking-[0.25em] text-[#696f77]">Round robin fixtures</p><h2 className="mt-1 text-2xl font-semibold text-[#181a1d]">{selectedTournament?.name ?? "Select a tournament"}</h2></div>
+                  <span className="text-sm text-[#626972]">{tournamentFixtures.length} fixtures</span>
+                </div>
+                <div className="mt-5 grid gap-3 md:grid-cols-2">
+                  {tournamentFixtures.map((fixture) => <div key={`${fixture.teamA.id}-${fixture.teamB.id}`} className="rounded-[18px] border border-[#e4dfdc] bg-white p-4"><div className="flex items-center justify-between gap-3"><p className="font-semibold text-[#17191d]">{teamLabel(fixture.teamA)} <span className="text-[#8a9097]">vs</span> {teamLabel(fixture.teamB)}</p><span className={`rounded-full px-2 py-1 text-[10px] uppercase tracking-[0.14em] ${fixture.match ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>{fixture.match ? "Completed" : "Pending"}</span></div><p className="mt-3 text-sm text-[#626972]">{fixture.match ? `${fixture.match.playerAScore} : ${fixture.match.playerBScore}` : "No score yet"}</p></div>)}
+                  {!tournamentFixtures.length && <p className="text-sm text-[#626972]">Select a tournament with saved pairs to see its fixtures.</p>}
+                </div>
+              </section>
             </>
           )}
 
@@ -710,6 +779,15 @@ export default function Home() {
                     <option value="internal">Internal: every team plays every other WSS team</option>
                     <option value="external">External: Group A plays Group B</option>
                   </select>
+                  <div className="grid grid-cols-2 gap-3">
+                    <select value={tournamentDraft.group_a} onChange={(event) => setTournamentDraft((current) => ({ ...current, group_a: event.target.value }))} className="w-full rounded-xl border border-white/10 bg-[#101316] px-3 py-2.5 text-sm text-white outline-none">{groupOptions.map((group) => <option key={group} value={group}>{group} group</option>)}</select>
+                    {tournamentDraft.format === "external" && <select value={tournamentDraft.group_b} onChange={(event) => setTournamentDraft((current) => ({ ...current, group_b: event.target.value }))} className="w-full rounded-xl border border-white/10 bg-[#101316] px-3 py-2.5 text-sm text-white outline-none">{groupOptions.filter((group) => group !== tournamentDraft.group_a).map((group) => <option key={group} value={group}>{group} group</option>)}</select>}
+                  </div>
+                  <input type="number" min={1} max={20} value={tournamentDraft.teams_per_group} onChange={(event) => { const count = Math.max(1, Math.min(20, Number(event.target.value) || 1)); setTournamentDraft((current) => ({ ...current, teams_per_group: count })); resizePairNames(tournamentDraft.format, count); }} className="w-full rounded-xl border border-white/10 bg-[#101316] px-3 py-2.5 text-sm text-white outline-none" placeholder="Teams per group" />
+                  <div className="space-y-3 rounded-2xl border border-white/10 bg-[#101316] p-3">
+                    <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Enter tournament pairs</p>
+                    {tournamentPairs.map((pair) => <div key={`${pair.group}-${pair.index}`}><p className="mb-1 text-xs font-semibold text-slate-300">Pair {pair.index + 1} · {pair.group === "a" ? tournamentDraft.group_a : tournamentDraft.group_b}</p><div className="grid grid-cols-2 gap-2"><input value={pair.player1} onChange={(event) => setPairNames((current) => { const next = current.length ? [...current] : tournamentPairs.map((item) => ({ ...item })); next.find((item) => item.group === pair.group && item.index === pair.index)!.player1 = event.target.value; return next; })} placeholder="Player 1" className="w-full rounded-lg border border-white/10 bg-[#171b1f] px-2.5 py-2 text-sm text-white outline-none" /><input value={pair.player2} onChange={(event) => setPairNames((current) => { const next = current.length ? [...current] : tournamentPairs.map((item) => ({ ...item })); next.find((item) => item.group === pair.group && item.index === pair.index)!.player2 = event.target.value; return next; })} placeholder="Player 2" className="w-full rounded-lg border border-white/10 bg-[#171b1f] px-2.5 py-2 text-sm text-white outline-none" /></div></div>)}
+                  </div>
                   <button type="submit" className="w-full rounded-full bg-gradient-to-r from-emerald-500 to-cyan-500 px-4 py-3 text-sm font-semibold text-white">Create league</button>
                 </form>
               </div>

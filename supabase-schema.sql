@@ -41,6 +41,11 @@ create table if not exists public.tournaments (
   created_at timestamptz not null default now()
 );
 
+alter table public.teams add column if not exists "tournamentId" text references public.tournaments(id);
+alter table public.tournaments add column if not exists group_a text not null default 'WSS';
+alter table public.tournaments add column if not exists group_b text not null default 'DCSC';
+alter table public.tournaments add column if not exists teams_per_group integer not null default 7;
+
 alter table public.tournaments add column if not exists event_date timestamptz;
 alter table public.tournaments add column if not exists location text not null default '';
 
@@ -57,6 +62,7 @@ drop policy if exists "WSS players can be read" on public.players;
 drop policy if exists "WSS players can be added" on public.players;
 drop policy if exists "WSS matches can be read" on public.matches;
 drop policy if exists "WSS matches can be added" on public.matches;
+drop policy if exists "WSS matches can be updated" on public.matches;
 drop policy if exists "WSS teams can be read" on public.teams;
 drop policy if exists "WSS teams can be added" on public.teams;
 drop policy if exists "WSS tournaments can be read" on public.tournaments;
@@ -80,6 +86,12 @@ create policy "WSS matches can be read"
 create policy "WSS matches can be added"
   on public.matches for insert
   to anon, authenticated
+  with check (true);
+
+create policy "WSS matches can be updated"
+  on public.matches for update
+  to anon, authenticated
+  using (true)
   with check (true);
 
 create policy "WSS teams can be read"
