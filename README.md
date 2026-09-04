@@ -33,7 +33,7 @@ The app works in local browser-storage mode until Supabase is configured. To ena
 
 1. Open [supabase.com](https://supabase.com), create an account, and create a new project.
 2. In the Supabase dashboard, open **SQL Editor** and choose **New query**.
-3. Copy the complete contents of `supabase-schema.sql` into the query, then click **Run**.
+3. Copy the complete contents of `supabase-schema.sql` into the query, then click **Run**. If you already ran an older version, run this updated file again; it adds doubles teams, tournament formats, and live fixture support without deleting existing results.
 4. Open **Project Settings -> API**. Copy the **Project URL** and the publishable/anon key.
 5. Create a local `.env.local` file by copying `.env.example`, then replace both placeholder values.
 6. Restart the development server with `npm run dev`.
