@@ -607,7 +607,6 @@ export default function Home() {
     }
     setLiveScore({ playerA: "", playerB: "" });
     setEditingMatchId(null);
-    setMatchDraft((current) => ({ ...current, teamAId: "", teamBId: "" }));
     setNotice(`All results for ${tournament.name} were cleared.`);
   };
 
@@ -854,6 +853,7 @@ export default function Home() {
 
     setLiveScore({ playerA: "", playerB: "" });
     setEditingMatchId(null);
+    setMatchDraft((current) => ({ ...current, teamAId: "", teamBId: "" }));
   };
 
   const selectTournament = (tournamentId: string) => {
