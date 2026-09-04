@@ -2,8 +2,11 @@ create table if not exists public.players (
   id text primary key,
   name text not null,
   skill text not null default 'Intermediate',
-  club text not null default 'WSS'
+  club text not null default 'WSS',
+  group_name text not null default 'A'
 );
+
+alter table public.players add column if not exists group_name text not null default 'A';
 
 create table if not exists public.matches (
   id text primary key,

@@ -6,8 +6,7 @@ import { hasSupabaseConfig, supabase } from "@/lib/supabase";
 type Player = {
   id: string;
   name: string;
-  skill: string;
-  club: string;
+  group_name: string;
 };
 
 type MatchRecord = {
@@ -45,10 +44,10 @@ type TabName = "dashboard" | "players" | "teams" | "tournaments" | "matches";
 const STORAGE_KEY = "wss-badminton-db-v1";
 
 const defaultPlayers: Player[] = [
-  { id: "p1", name: "Nattu", skill: "Advanced", club: "WSS" },
-  { id: "p2", name: "Aarav", skill: "Advanced", club: "WSS" },
-  { id: "p3", name: "Jeevan", skill: "Intermediate", club: "WSS" },
-  { id: "p4", name: "Rafi", skill: "Intermediate", club: "WSS" },
+  { id: "p1", name: "Nattu", group_name: "A" },
+  { id: "p2", name: "Aarav", group_name: "A" },
+  { id: "p3", name: "Jeevan", group_name: "B" },
+  { id: "p4", name: "Rafi", group_name: "B" },
 ];
 
 const defaultMatches: MatchRecord[] = [
@@ -88,7 +87,7 @@ export default function Home() {
   const [teams, setTeams] = useState<Team[]>([]);
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
   const [tab, setTab] = useState<TabName>("dashboard");
-  const [newPlayer, setNewPlayer] = useState({ name: "", skill: "Intermediate", club: "WSS" });
+  const [newPlayer, setNewPlayer] = useState({ name: "", group_name: "A" });
   const [liveScore, setLiveScore] = useState({ playerA: 0, playerB: 0 });
   const [matchDraft, setMatchDraft] = useState({
     teamAId: "",
@@ -114,7 +113,11 @@ export default function Home() {
 
       try {
         const parsed = JSON.parse(raw) as { players?: Player[]; matches?: MatchRecord[] };
-        setPlayers(parsed.players && parsed.players.length ? parsed.players : defaultPlayers);
+        setPlayers(
+          parsed.players && parsed.players.length
+            ? parsed.players.map((player) => ({ id: player.id, name: player.name, group_name: player.group_name || "A" }))
+            : defaultPlayers,
+        );
         setMatches(parsed.matches && parsed.matches.length ? parsed.matches : defaultMatches);
       } catch {
         setPlayers(defaultPlayers);
@@ -252,8 +255,7 @@ export default function Home() {
     const createdPlayer: Player = {
       id: createId(),
       name: trimmedName,
-      skill: newPlayer.skill,
-      club: newPlayer.club.trim() || "WSS",
+      group_name: newPlayer.group_name.trim().toUpperCase() || "A",
     };
 
     if (hasSupabaseConfig && supabase) {
@@ -272,7 +274,7 @@ export default function Home() {
       setNotice(`${trimmedName} was added to the player database.`);
     }
 
-    setNewPlayer({ name: "", skill: "Intermediate", club: "WSS" });
+    setNewPlayer({ name: "", group_name: "A" });
   };
 
   const addTeam = async (event: React.FormEvent) => {
@@ -605,7 +607,7 @@ export default function Home() {
                           </div>
                           <div>
                             <p className="font-semibold text-[#17191d]">{player.name}</p>
-                            <p className="text-xs text-[#666d75]">{player.skill}</p>
+                            <p className="text-xs text-[#666d75]">Group {player.group_name}</p>
                           </div>
                         </div>
                         <div className="text-right">
@@ -642,32 +644,14 @@ export default function Home() {
 
                   <div>
                     <label className="mb-2 block text-xs uppercase tracking-[0.2em] text-slate-400">
-                      Skill level
-                    </label>
-                    <select
-                      value={newPlayer.skill}
-                      onChange={(event) =>
-                        setNewPlayer((current) => ({ ...current, skill: event.target.value }))
-                      }
-                      className="w-full rounded-xl border border-white/10 bg-[#101316] px-3 py-2.5 text-sm text-white outline-none"
-                    >
-                      <option value="Beginner">Beginner</option>
-                      <option value="Intermediate">Intermediate</option>
-                      <option value="Advanced">Advanced</option>
-                      <option value="Pro">Pro</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="mb-2 block text-xs uppercase tracking-[0.2em] text-slate-400">
-                      Club/Team
+                      Group name
                     </label>
                     <input
                       type="text"
-                      value={newPlayer.club}
-                      onChange={(event) => setNewPlayer((current) => ({ ...current, club: event.target.value }))}
+                      value={newPlayer.group_name}
+                      onChange={(event) => setNewPlayer((current) => ({ ...current, group_name: event.target.value }))}
                       className="w-full rounded-xl border border-white/10 bg-[#101316] px-3 py-2.5 text-sm text-white outline-none"
-                      placeholder="WSS"
+                      placeholder="A or B"
                     />
                   </div>
 
@@ -692,12 +676,12 @@ export default function Home() {
                           {player.name.slice(0, 2).toUpperCase()}
                         </span>
                         <span className="rounded-full bg-[#eef2ff] px-2 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-[#4f46e5]">
-                          {player.skill}
+                          Group {player.group_name}
                         </span>
                       </div>
 
                       <p className="mt-3 text-lg font-semibold text-[#17191d]">{player.name}</p>
-                      <p className="text-sm text-[#626972]">{player.club}</p>
+                      <p className="text-sm text-[#626972]">Group {player.group_name}</p>
                     </div>
                   ))}
                 </div>
