@@ -996,6 +996,12 @@ export default function Home() {
                     type="button"
                     onClick={saveMatch}
                     className="dashboard-save-result mt-5 w-full rounded-full px-4 py-3 text-sm font-semibold"
+                    style={{
+                      background: "linear-gradient(100deg, #8b6312 0%, #d8aa2e 25%, #fff1a4 51%, #e8bd45 68%, #996d13 100%)",
+                      color: "#31230b",
+                      border: "1px solid rgba(118, 82, 12, 0.58)",
+                      boxShadow: "0 12px 19px rgba(93, 67, 17, 0.32), inset 0 1px rgba(255,255,255,0.78), inset 0 -2px rgba(91,59,5,0.2)",
+                    }}
                   >
                     Save match result
                   </button>
@@ -1016,7 +1022,18 @@ export default function Home() {
                         className="flex items-center justify-between rounded-[18px] border border-[#e5e0dd] bg-white p-3"
                       >
                         <div className="flex items-center gap-3">
-                          <div className={`rank-medal rank-medal-${index + 1} flex h-9 w-9 items-center justify-center rounded-full bg-[#17191d] text-sm font-semibold text-white`}>
+                          <div
+                            className={`rank-medal rank-medal-${index + 1} flex items-center justify-center text-sm font-semibold`}
+                            style={
+                              index === 0
+                                ? { width: 48, height: 54, background: "linear-gradient(145deg, #fff1a7, #c99418)", color: "#17263a", border: "2px solid #b07e12", clipPath: "polygon(50% 0%, 92% 11%, 100% 69%, 50% 100%, 0% 69%, 8% 11%)", boxShadow: "0 6px 13px rgba(128,89,10,0.35)" }
+                                : index === 1
+                                  ? { width: 45, height: 45, borderRadius: "50%", background: "linear-gradient(145deg, #fff9da, #b8c0c9)", color: "#17263a", border: "2px solid #c99418", boxShadow: "0 5px 11px rgba(128,89,10,0.28)" }
+                                  : index === 2
+                                    ? { width: 45, height: 45, background: "linear-gradient(145deg, #e7ad78, #9c5d35)", color: "#17263a", border: "2px solid #a9683d", clipPath: "polygon(50% 0%, 90% 18%, 100% 66%, 70% 100%, 30% 100%, 0% 66%, 10% 18%)", boxShadow: "0 5px 11px rgba(128,89,10,0.28)" }
+                                    : { width: 42, height: 42, borderRadius: "50%", background: "linear-gradient(145deg, #fffdf4, #d8d1c0)", color: "#17263a", border: "2px solid #b89543" }
+                            }
+                          >
                             #{index + 1}
                           </div>
                           <div>
