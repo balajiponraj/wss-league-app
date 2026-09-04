@@ -161,6 +161,7 @@ export default function Home() {
   const [newGroupName, setNewGroupName] = useState("");
   const [notice, setNotice] = useState("Local storage mode enabled. Connect Supabase for live database storage.");
   const groupOptions = groups.map((group) => group.name);
+  const visibleTournaments = tournaments.filter((tournament) => isAuthenticated || tournament.status !== "hidden");
 
   const refreshDatabase = useCallback(async () => {
     if (!supabase) return;
@@ -282,7 +283,7 @@ export default function Home() {
       setTournaments(nextTournaments);
       if (groupsData?.length) setGroups(groupsData as Group[]);
       setTeamDraft((current) => ({ ...current, playerAId: current.playerAId || nextPlayers[0]?.id || "", playerBId: current.playerBId || nextPlayers[1]?.id || "" }));
-      setMatchDraft((current) => ({ ...current, teamAId: current.teamAId || nextTeams[0]?.id || "", teamBId: current.teamBId || nextTeams[1]?.id || "", tournamentId: current.tournamentId || nextTournaments[0]?.id || "" }));
+      setMatchDraft((current) => ({ ...current, tournamentId: current.tournamentId || "", teamAId: "", teamBId: "" }));
       setNotice("Connected to Supabase. Live sync is active.");
     };
 
@@ -601,6 +602,7 @@ export default function Home() {
     }
     setLiveScore({ playerA: "", playerB: "" });
     setEditingMatchId(null);
+    setMatchDraft((current) => ({ ...current, teamAId: "", teamBId: "" }));
     setNotice(`All results for ${tournament.name} were cleared.`);
   };
 
@@ -779,8 +781,8 @@ export default function Home() {
 
     const playerAScore = Number(liveScore.playerA);
     const playerBScore = Number(liveScore.playerB);
-    if (!Number.isFinite(playerAScore) || !Number.isFinite(playerBScore) || (playerAScore === 0 && playerBScore === 0)) {
-      setNotice("Score cannot be 0-0. Enter a result before saving.");
+    if (!Number.isFinite(playerAScore) || !Number.isFinite(playerBScore) || playerAScore > 30 || playerBScore > 30 || (playerAScore === 0 && playerBScore === 0)) {
+      setNotice("Scores must be between 0 and 30, and cannot be 0-0.");
       return;
     }
 
@@ -825,15 +827,23 @@ export default function Home() {
   };
 
   const selectTournament = (tournamentId: string) => {
-    const tournament = tournaments.find((item) => item.id === tournamentId);
-    const availableTeams = teams.filter((team) => team.tournamentId === tournamentId);
-    const firstTeam = availableTeams.find((team) => !tournament || teamGroup(team) === tournament.group_a);
-    const secondTeam = availableTeams.find((team) => team.id !== firstTeam?.id && (!tournament || teamGroup(team) === (tournament.format === "external" ? tournament.group_b : tournament.group_a)));
-    setMatchDraft((current) => ({ ...current, tournamentId, teamAId: firstTeam?.id ?? "", teamBId: secondTeam?.id ?? "" }));
+    setMatchDraft((current) => ({ ...current, tournamentId, teamAId: "", teamBId: "" }));
     setPlayoffTournamentId(tournamentId);
     setStandingsTournamentId(tournamentId);
     setFixtureTeamFilter("");
     setLiveScore({ playerA: "", playerB: "" });
+  };
+
+  const toggleTournamentVisibility = async (tournament: Tournament) => {
+    const nextStatus = tournament.status === "hidden" ? "active" : "hidden";
+    if (hasSupabaseConfig && supabase) {
+      const { error } = await supabase.from("tournaments").update({ status: nextStatus }).eq("id", tournament.id);
+      if (error) { setNotice(`League visibility update failed: ${error.message}`); return; }
+      await refreshDatabase();
+    } else {
+      setTournaments((current) => current.map((item) => item.id === tournament.id ? { ...item, status: nextStatus } : item));
+    }
+    setNotice(`${tournament.name} is now ${nextStatus === "hidden" ? "hidden" : "visible"}.`);
   };
 
   return (
@@ -885,7 +895,7 @@ export default function Home() {
 
           {tab === "dashboard" && (
             <>
-              <select value={matchDraft.tournamentId} onChange={(event) => selectTournament(event.target.value)} className="w-full rounded-xl border border-[#d7a91d]/50 bg-[#0d2b4a] px-4 py-3 text-sm font-semibold text-white outline-none"><option value="">Select tournament</option>{tournaments.map((tournament) => <option key={tournament.id} value={tournament.id}>{tournament.name}</option>)}</select>
+              <select value={matchDraft.tournamentId} onChange={(event) => selectTournament(event.target.value)} className="w-full rounded-xl border border-[#d7a91d]/50 bg-[#0d2b4a] px-4 py-3 text-sm font-semibold text-white outline-none"><option value="">Select tournament</option>{visibleTournaments.map((tournament) => <option key={tournament.id} value={tournament.id}>{tournament.name}</option>)}</select>
               {playoffComplete && <section className="space-y-6 rounded-[26px] border border-[#d7a91d]/50 bg-[#0d2b4a] p-5 text-white shadow-[0_20px_45px_rgba(0,0,0,0.26)]"><div className="border-b border-[#f7c62f]/30 pb-5 text-center"><p className="text-xs font-semibold uppercase tracking-[0.3em] text-[#f7c62f]">Tournament champion</p><p className="mt-2 text-3xl">🥇</p><h2 className="text-2xl font-bold text-[#f7c62f]">{playoffBracket.podium[0] ? teamLabel(playoffBracket.podium[0]) : "Champion"}</h2><p className="mt-2 text-sm text-slate-300">{playoffTournament?.name}</p></div><div className="grid gap-3 md:grid-cols-3"><div className="rounded-xl border border-[#e3b821] bg-[#f7c62f] p-4 text-center text-[#071a2d]"><p className="text-2xl">🥇</p><p className="text-xs font-semibold uppercase tracking-[0.18em]">Gold</p><p className="mt-2 font-bold">{playoffBracket.podium[0] ? teamLabel(playoffBracket.podium[0]) : "TBD"}</p></div><div className="rounded-xl border border-slate-300/50 bg-slate-200 p-4 text-center text-[#142b45]"><p className="text-2xl">🥈</p><p className="text-xs font-semibold uppercase tracking-[0.18em]">Silver</p><p className="mt-2 font-bold">{playoffBracket.podium[1] ? teamLabel(playoffBracket.podium[1]) : "TBD"}</p></div><div className="rounded-xl border border-[#a9683d] bg-[#ad6b43] p-4 text-center text-white"><p className="text-2xl">🥉</p><p className="text-xs font-semibold uppercase tracking-[0.18em]">Bronze</p><p className="mt-2 font-bold">{playoffBracket.podium[2] ? teamLabel(playoffBracket.podium[2]) : "TBD"}</p></div></div><div className="grid gap-3 md:grid-cols-3">{dashboardPlayoffResults.map((fixture) => <div key={fixture.key} className="rounded-2xl border border-[#f7c62f]/25 bg-[#071a2d] p-4"><p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#f7c62f]">{fixture.key === "final" ? "Final" : fixture.key === "sf1" ? "Semi-final 1" : fixture.key === "sf2" ? "Semi-final 2" : fixture.key === "bronze" ? "Bronze match" : `Quarter-final ${fixture.key.replace("qf", "")}`}</p><p className="mt-2 text-sm font-semibold">{fixture.teamA ? teamLabel(fixture.teamA) : "TBD"}</p><p className="text-sm font-semibold">{fixture.teamB ? teamLabel(fixture.teamB) : "TBD"}</p><p className="mt-3 text-xl font-bold text-[#f7c62f]">{fixture.teamAScore} : {fixture.teamBScore}</p></div>)}</div><div className="rounded-2xl bg-[#f7f8fa] p-5 text-[#18212b]"><p className="text-[10px] font-semibold uppercase tracking-[0.25em] text-[#6b7078]">Final standings</p><h2 className="mt-1 text-2xl font-semibold">Player rankings</h2><div className="mt-4 space-y-2">{leaderboard.map((entry, index) => <div key={entry.team.id} className="flex items-center justify-between border-b border-[#e5e0dd] py-2 last:border-0"><span className="font-semibold">#{index + 1} {teamLabel(entry.team)}</span><span className="font-bold">{entry.wins} wins</span></div>)}</div></div></section>}
               {!playoffComplete && <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
                 <div className="rounded-[26px] border border-[#d9d3d0] bg-[#1b1d20] p-5 text-white shadow-[0_16px_30px_rgba(17,24,39,0.12)]">
@@ -898,7 +908,7 @@ export default function Home() {
 
                   <select value={matchDraft.tournamentId} onChange={(event) => selectTournament(event.target.value)} className="mb-4 w-full rounded-xl border border-white/10 bg-[#121417] px-3 py-2 text-sm text-white outline-none">
                     <option value="">Select tournament</option>
-                    {tournaments.map((tournament) => <option key={tournament.id} value={tournament.id}>{tournament.name}</option>)}
+                    {visibleTournaments.map((tournament) => <option key={tournament.id} value={tournament.id}>{tournament.name}</option>)}
                   </select>
 
                   <select value={matchDraft.teamAId && matchDraft.teamBId ? `${matchDraft.teamAId}:${matchDraft.teamBId}` : ""} onChange={(event) => selectFixture(event.target.value)} className="mb-4 w-full rounded-xl border border-white/10 bg-[#121417] px-3 py-2 text-sm text-white outline-none">
@@ -926,7 +936,7 @@ export default function Home() {
                       </select>
 
                       <div className="mt-5 flex items-center justify-between">
-                        <input type="text" inputMode="numeric" pattern="[0-9]*" value={liveScore.playerA} onChange={(event) => setLiveScore((current) => ({ ...current, playerA: event.target.value.replace(/\D/g, "") }))} placeholder="0" className="w-28 rounded-xl border border-white/10 bg-[#121417] px-3 py-2 text-4xl font-bold text-white outline-none" />
+                        <input type="text" inputMode="numeric" pattern="[0-9]*" value={liveScore.playerA} onChange={(event) => setLiveScore((current) => ({ ...current, playerA: event.target.value.replace(/\D/g, "").slice(0, 2).replace(/^([3-9][1-9])$/, "30") }))} placeholder="Score (0-30)" className="w-36 rounded-xl border border-white/10 bg-[#121417] px-3 py-2 text-4xl font-bold text-white outline-none" />
                       </div>
                     </div>
 
@@ -949,7 +959,7 @@ export default function Home() {
                       </select>
 
                       <div className="mt-5 flex items-center justify-between">
-                        <input type="text" inputMode="numeric" pattern="[0-9]*" value={liveScore.playerB} onChange={(event) => setLiveScore((current) => ({ ...current, playerB: event.target.value.replace(/\D/g, "") }))} placeholder="0" className="w-28 rounded-xl border border-white/10 bg-[#121417] px-3 py-2 text-4xl font-bold text-white outline-none" />
+                        <input type="text" inputMode="numeric" pattern="[0-9]*" value={liveScore.playerB} onChange={(event) => setLiveScore((current) => ({ ...current, playerB: event.target.value.replace(/\D/g, "").slice(0, 2).replace(/^([3-9][1-9])$/, "30") }))} placeholder="Score (0-30)" className="w-36 rounded-xl border border-white/10 bg-[#121417] px-3 py-2 text-4xl font-bold text-white outline-none" />
                       </div>
                     </div>
                   </div>
@@ -1149,7 +1159,7 @@ export default function Home() {
               <div className="rounded-[26px] border border-[#d9d3d0] bg-[#f9f7f5] p-5">
                 <p className="text-[10px] uppercase tracking-[0.25em] text-[#696f77]">Competition calendar</p>
                 <h2 className="mt-2 text-2xl font-semibold text-[#181a1d]">Your leagues</h2>
-                <div className="mt-5 space-y-3">{tournaments.map((tournament) => <div key={tournament.id} className="rounded-[20px] border border-[#e4dfdc] bg-white p-4"><div className="flex items-center justify-between gap-3"><p className="font-semibold text-[#17191d]">{tournament.name}</p><span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] uppercase text-emerald-700">{tournament.format}</span></div><p className="mt-2 text-sm text-[#626972]">{tournament.format === "internal" ? "All enrolled teams play one another." : "Teams play the teams in the opposite group."}</p><p className="mt-2 text-xs text-[#626972]">{formatEasternTime(tournament.event_date)}{tournament.location ? ` · ${tournament.location}` : ""}</p><div className="mt-4 flex flex-wrap gap-2"><button type="button" onClick={() => editTournament(tournament)} className="rounded-full border border-[#cdd8f7] px-3 py-1.5 text-xs font-semibold text-[#3949ab]">Edit league</button><button type="button" onClick={() => void clearTournamentResults(tournament)} className="rounded-full border border-[#e2c15a] px-3 py-1.5 text-xs font-semibold text-[#8d650b]">Clear results</button><button type="button" onClick={() => { if (window.confirm(`Delete ${tournament.name} and all its pairs and results?`)) void deleteTournament(tournament); }} className="rounded-full border border-rose-200 px-3 py-1.5 text-xs font-semibold text-rose-700">Delete league</button></div></div>)}</div>
+                <div className="mt-5 space-y-3">{visibleTournaments.map((tournament) => <div key={tournament.id} className="rounded-[20px] border border-[#e4dfdc] bg-white p-4"><div className="flex items-center justify-between gap-3"><p className="font-semibold text-[#17191d]">{tournament.name}</p><span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] uppercase text-emerald-700">{tournament.format}</span></div><p className="mt-2 text-sm text-[#626972]">{tournament.format === "internal" ? "All enrolled teams play one another." : "Teams play the teams in the opposite group."}</p><p className="mt-2 text-xs text-[#626972]">{formatEasternTime(tournament.event_date)}{tournament.location ? ` · ${tournament.location}` : ""}</p><div className="mt-4 flex flex-wrap gap-2"><button type="button" onClick={() => editTournament(tournament)} className="rounded-full border border-[#cdd8f7] px-3 py-1.5 text-xs font-semibold text-[#3949ab]">Edit league</button><button type="button" onClick={() => void clearTournamentResults(tournament)} className="rounded-full border border-[#e2c15a] px-3 py-1.5 text-xs font-semibold text-[#8d650b]">Clear results</button><button type="button" onClick={() => void toggleTournamentVisibility(tournament)} className="rounded-full border border-[#cdd8f7] px-3 py-1.5 text-xs font-semibold text-[#3949ab]">{tournament.status === "hidden" ? "Show league" : "Hide league"}</button><button type="button" onClick={() => { if (window.confirm(`Delete ${tournament.name} and all its pairs and results?`)) void deleteTournament(tournament); }} className="rounded-full border border-rose-200 px-3 py-1.5 text-xs font-semibold text-rose-700">Delete league</button></div></div>)}</div>
               </div>
             </section>
           )}
@@ -1159,7 +1169,7 @@ export default function Home() {
               <div className="rounded-[26px] border border-[#d9d3d0] bg-[#191c20] p-5 text-white">
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
                   <div><p className="text-[10px] uppercase tracking-[0.25em] text-slate-400">Competition table</p><h2 className="mt-2 text-2xl font-semibold">Tournament standings</h2></div>
-                  <select value={standingsTournament?.id ?? ""} onChange={(event) => setStandingsTournamentId(event.target.value)} className="rounded-xl border border-white/10 bg-[#101316] px-3 py-2.5 text-sm text-white outline-none"><option value="">Select league</option>{tournaments.map((tournament) => <option key={tournament.id} value={tournament.id}>{tournament.name}</option>)}</select>
+                  <select value={standingsTournament?.id ?? ""} onChange={(event) => setStandingsTournamentId(event.target.value)} className="rounded-xl border border-white/10 bg-[#101316] px-3 py-2.5 text-sm text-white outline-none"><option value="">Select league</option>{visibleTournaments.map((tournament) => <option key={tournament.id} value={tournament.id}>{tournament.name}</option>)}</select>
                 </div>
                 {!standingsTournament && <p className="mt-5 text-sm text-slate-300">Create a league and record tournament matches to build standings.</p>}
                 {standingsTournament && <p className="mt-4 text-sm text-slate-300">{standingsTournament.format === "internal" ? "Internal league: top 4 qualify for the playoff." : "External league: top 8 qualify for the quarter-finals."} Rankings use wins first, then point difference, then points scored.</p>}
@@ -1178,7 +1188,7 @@ export default function Home() {
           {tab === "playoffs" && (
             <section data-view="playoff" className="space-y-6">
               {playoffTournament && <div className="grid gap-3 md:grid-cols-3"><div className="rounded-xl border border-[#e3b821] bg-[#f7c62f] p-5 text-center text-[#071a2d]"><p className="text-2xl">🥇</p><p className="text-xs uppercase tracking-[0.18em]">Gold</p><p className="mt-3 font-bold">{playoffBracket.podium[0] ? teamLabel(playoffBracket.podium[0]) : "TBD"}</p></div><div className="rounded-xl border border-[#b9c2ce] bg-[#e4e8ed] p-5 text-center text-[#142b45]"><p className="text-2xl">🥈</p><p className="text-xs uppercase tracking-[0.18em]">Silver</p><p className="mt-3 font-bold">{playoffBracket.podium[1] ? teamLabel(playoffBracket.podium[1]) : "TBD"}</p></div><div className="rounded-xl border border-[#a9683d] bg-[#ad6b43] p-5 text-center text-white"><p className="text-2xl">🥉</p><p className="text-xs uppercase tracking-[0.18em]">Bronze</p><p className="mt-3 font-bold">{playoffBracket.podium[2] ? teamLabel(playoffBracket.podium[2]) : "TBD"}</p></div></div>}
-              <div className="rounded-[26px] border border-[#d9d3d0] bg-[#191c20] p-5 text-white"><p className="text-[10px] uppercase tracking-[0.25em] text-slate-400">Knockout competition</p><div className="flex items-center justify-between gap-4"><h2 className="mt-2 text-2xl font-semibold">Playoff bracket</h2><select value={playoffTournament?.id ?? ""} onChange={(event) => setPlayoffTournamentId(event.target.value)} className="rounded-xl border border-white/10 bg-[#101316] px-3 py-2 text-sm text-white"><option value="">Select league</option>{tournaments.map((tournament) => <option key={tournament.id} value={tournament.id}>{tournament.name}</option>)}</select></div><p className="mt-3 text-sm text-slate-300">{playoffTournament?.format === "internal" ? "Top 4: Qualifier 1, Eliminator, Qualifier 2, Final." : "Top 8: Quarter-finals, semi-finals, final, and bronze match."}</p></div>
+              <div className="rounded-[26px] border border-[#d9d3d0] bg-[#191c20] p-5 text-white"><p className="text-[10px] uppercase tracking-[0.25em] text-slate-400">Knockout competition</p><div className="flex items-center justify-between gap-4"><h2 className="mt-2 text-2xl font-semibold">Playoff bracket</h2><select value={playoffTournament?.id ?? ""} onChange={(event) => setPlayoffTournamentId(event.target.value)} className="rounded-xl border border-white/10 bg-[#101316] px-3 py-2 text-sm text-white"><option value="">Select league</option>{visibleTournaments.map((tournament) => <option key={tournament.id} value={tournament.id}>{tournament.name}</option>)}</select></div><p className="mt-3 text-sm text-slate-300">{playoffTournament?.format === "internal" ? "Top 4: Qualifier 1, Eliminator, Qualifier 2, Final." : "Top 8: Quarter-finals, semi-finals, final, and bronze match."}</p></div>
               {playoffTournament && <div className="overflow-x-auto rounded-[26px] border border-[#d9d3d0] bg-[#182f4d] p-5"><div className="grid min-w-[900px] grid-cols-3 gap-4">{playoffBracket.columns.map((column, columnIndex) => <div key={columnIndex} className="space-y-4"><p className="px-2 text-xs font-semibold uppercase tracking-[0.18em] text-amber-200">{playoffTournament.format === "external" ? ["Quarter-finals", "Semi-finals", "Final & bronze"][columnIndex] : ["Qualifier 1 / Eliminator", "Qualifier 2", "Final"][columnIndex]}</p>{column.map((fixture) => <div key={fixture.key} className="rounded-xl border border-[#d8c58a]/60 bg-white p-3 text-[#18212b]"><p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#6b7279]">{fixture.key}</p><p className="mt-2 text-sm font-semibold">{fixture.teamA ? teamLabel(fixture.teamA) : "Waiting for previous round"}</p><p className="text-sm font-semibold">{fixture.teamB ? teamLabel(fixture.teamB) : "Waiting for previous round"}</p><div className="mt-3 grid grid-cols-2 gap-2"><input type="text" inputMode="numeric" placeholder="Score" value={playoffScores[fixture.key]?.a ?? (fixture.match ? String(fixture.match.playerAScore) : "")} onChange={(event) => setPlayoffScores((current) => ({ ...current, [fixture.key]: { a: event.target.value.replace(/\D/g, ""), b: current[fixture.key]?.b ?? "" } }))} className="w-full rounded-lg border border-[#d8dfe4] px-2 py-1.5 text-sm" /><input type="text" inputMode="numeric" placeholder="Score" value={playoffScores[fixture.key]?.b ?? (fixture.match ? String(fixture.match.playerBScore) : "")} onChange={(event) => setPlayoffScores((current) => ({ ...current, [fixture.key]: { a: current[fixture.key]?.a ?? "", b: event.target.value.replace(/\D/g, "") } }))} className="w-full rounded-lg border border-[#d8dfe4] px-2 py-1.5 text-sm" /></div>{fixture.teamA && fixture.teamB && <button type="button" onClick={() => void savePlayoffResult(fixture)} className="mt-3 w-full rounded-lg bg-[#c9962d] px-3 py-2 text-xs font-semibold text-white">{fixture.match ? "Update result" : "Save result"}</button>}</div>)}</div>)}</div></div>}
               {playoffTournament && <div className="grid gap-3 md:grid-cols-3"><div className="rounded-xl border border-[#b9c2ce] bg-[#e4e8ed] p-5 text-center text-[#142b45]"><p className="text-2xl">🥈</p><p className="text-xs uppercase tracking-[0.18em]">Silver</p><p className="mt-3 font-bold">{playoffBracket.podium[1] ? teamLabel(playoffBracket.podium[1]) : "TBD"}</p></div><div className="rounded-xl border border-[#e3b821] bg-[#f7c62f] p-5 text-center text-[#071a2d]"><p className="text-2xl">🥇</p><p className="text-xs uppercase tracking-[0.18em]">Gold</p><p className="mt-3 font-bold">{playoffBracket.podium[0] ? teamLabel(playoffBracket.podium[0]) : "TBD"}</p></div><div className="rounded-xl border border-[#a9683d] bg-[#ad6b43] p-5 text-center text-white"><p className="text-2xl">🥉</p><p className="text-xs uppercase tracking-[0.18em]">Bronze</p><p className="mt-3 font-bold">{playoffBracket.podium[2] ? teamLabel(playoffBracket.podium[2]) : "TBD"}</p></div></div>}
             </section>
@@ -1195,7 +1205,7 @@ export default function Home() {
                     <label className="mb-2 block text-xs uppercase tracking-[0.2em] text-slate-400">League</label>
                     <select value={matchDraft.tournamentId} onChange={(event) => selectTournament(event.target.value)} className="w-full rounded-xl border border-white/10 bg-[#101316] px-3 py-2.5 text-sm text-white outline-none">
                       <option value="">Friendly / no league</option>
-                      {tournaments.map((tournament) => <option key={tournament.id} value={tournament.id}>{tournament.name} ({tournament.format})</option>)}
+                      {visibleTournaments.map((tournament) => <option key={tournament.id} value={tournament.id}>{tournament.name} ({tournament.format})</option>)}
                     </select>
                   </div>
 
@@ -1327,3 +1337,4 @@ export default function Home() {
     </div>
   );
 }
+
