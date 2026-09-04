@@ -475,10 +475,8 @@ export default function Home() {
               {[
                 { key: "dashboard", label: "Dashboard" },
                 { key: "players", label: "Players" },
-                { key: "teams", label: "Doubles teams" },
                 { key: "tournaments", label: "Leagues" },
                 { key: "standings", label: "Standings" },
-                { key: "matches", label: "Matches" },
               ].map((item) => (
                 <button
                   key={item.key}
