@@ -449,6 +449,17 @@ export default function Home() {
     return { columns: [q, [sf1, sf2], [final, bronze]], podium: [winnerOf("final"), loserOf("final"), winnerOf("bronze")] };
   }, [matches, playoffStandings, playoffTournament, teamMap]);
 
+  const playoffResultOrder = playoffTournament?.format === "external"
+    ? ["final", "sf1", "sf2", "qf1", "qf2", "qf3", "qf4", "bronze"]
+    : ["final", "q2", "q1", "eliminator"];
+  const dashboardPlayoffResults = playoffTournament
+    ? playoffResultOrder.map((key) => {
+        const fixture = playoffBracket.columns.flat().find((item) => item.key === key);
+        return fixture?.match ? fixture : undefined;
+      }).filter((fixture): fixture is NonNullable<typeof fixture> => Boolean(fixture))
+    : [];
+  const playoffComplete = Boolean(playoffTournament && playoffResultOrder.every((key) => playoffBracket.columns.flat().some((fixture) => fixture.key === key && fixture.match)));
+
   const deletablePlayers = players.filter((player) => player.group_name === deletePlayerDraft.group_name);
 
   const addPlayer = async (event: React.FormEvent) => {
@@ -832,7 +843,8 @@ export default function Home() {
 
           {tab === "dashboard" && (
             <>
-              <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+              {playoffComplete && <section className="space-y-6 rounded-[26px] border border-[#d7a91d]/50 bg-[#0d2b4a] p-5 text-white shadow-[0_20px_45px_rgba(0,0,0,0.26)]"><div className="border-b border-[#f7c62f]/30 pb-5 text-center"><p className="text-xs font-semibold uppercase tracking-[0.3em] text-[#f7c62f]">Tournament champion</p><p className="mt-2 text-3xl">🥇</p><h2 className="text-2xl font-bold text-[#f7c62f]">{playoffBracket.podium[0] ? teamLabel(playoffBracket.podium[0]) : "Champion"}</h2><p className="mt-2 text-sm text-slate-300">{playoffTournament?.name}</p></div><div className="grid gap-3 md:grid-cols-3"><div className="rounded-xl border border-slate-300/50 bg-slate-200 p-4 text-center text-[#142b45]"><p className="text-2xl">🥈</p><p className="text-xs font-semibold uppercase tracking-[0.18em]">Silver</p><p className="mt-2 font-bold">{playoffBracket.podium[1] ? teamLabel(playoffBracket.podium[1]) : "TBD"}</p></div><div className="rounded-xl border border-[#e3b821] bg-[#f7c62f] p-4 text-center text-[#071a2d]"><p className="text-2xl">🥇</p><p className="text-xs font-semibold uppercase tracking-[0.18em]">Gold</p><p className="mt-2 font-bold">{playoffBracket.podium[0] ? teamLabel(playoffBracket.podium[0]) : "TBD"}</p></div><div className="rounded-xl border border-[#a9683d] bg-[#ad6b43] p-4 text-center text-white"><p className="text-2xl">🥉</p><p className="text-xs font-semibold uppercase tracking-[0.18em]">Bronze</p><p className="mt-2 font-bold">{playoffBracket.podium[2] ? teamLabel(playoffBracket.podium[2]) : "TBD"}</p></div></div><div className="grid gap-3 md:grid-cols-3">{dashboardPlayoffResults.map((fixture) => <div key={fixture.key} className="rounded-2xl border border-[#f7c62f]/25 bg-[#071a2d] p-4"><p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#f7c62f]">{fixture.key === "final" ? "Final" : fixture.key === "sf1" ? "Semi-final 1" : fixture.key === "sf2" ? "Semi-final 2" : fixture.key === "bronze" ? "Bronze match" : `Quarter-final ${fixture.key.replace("qf", "")}`}</p><p className="mt-2 text-sm font-semibold">{fixture.teamA ? teamLabel(fixture.teamA) : "TBD"}</p><p className="text-sm font-semibold">{fixture.teamB ? teamLabel(fixture.teamB) : "TBD"}</p><p className="mt-3 text-xl font-bold text-[#f7c62f]">{fixture.teamAScore} : {fixture.teamBScore}</p></div>)}</div><div className="rounded-2xl bg-[#f7f8fa] p-5 text-[#18212b]"><p className="text-[10px] font-semibold uppercase tracking-[0.25em] text-[#6b7078]">Final standings</p><h2 className="mt-1 text-2xl font-semibold">Player rankings</h2><div className="mt-4 space-y-2">{leaderboard.map((entry, index) => <div key={entry.team.id} className="flex items-center justify-between border-b border-[#e5e0dd] py-2 last:border-0"><span className="font-semibold">#{index + 1} {teamLabel(entry.team)}</span><span className="font-bold">{entry.wins} wins</span></div>)}</div></div></section>}
+              {!playoffComplete && <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
                 <div className="rounded-[26px] border border-[#d9d3d0] bg-[#1b1d20] p-5 text-white shadow-[0_16px_30px_rgba(17,24,39,0.12)]">
                   <div className="mb-4 flex items-center justify-between">
                     <div>
@@ -939,7 +951,7 @@ export default function Home() {
                     ))}
                   </div>
                 </div>
-              </section>
+              </section>}
 
               {selectedTournament && playoffBracket.columns.some((column) => column.some((fixture) => fixture.match)) && <section className="rounded-[26px] border border-[#d9d3d0] bg-[#182f4d] p-5 text-white"><div className="flex items-center justify-between"><div><p className="text-[10px] uppercase tracking-[0.25em] text-amber-200">Knockout results</p><h2 className="mt-1 text-2xl font-semibold">{selectedTournament.name} playoff results</h2></div><span className="text-xs uppercase tracking-[0.16em] text-slate-300">{selectedTournament.format === "external" ? "Quarter-finals · Semi-finals · Final · Bronze" : "Qualifier 1 · Eliminator · Qualifier 2 · Final"}</span></div><div className="mt-5 grid gap-4 md:grid-cols-3">{playoffBracket.columns.map((column, columnIndex) => <div key={columnIndex} className="space-y-3"><p className="text-xs font-semibold uppercase tracking-[0.16em] text-amber-200">{selectedTournament.format === "external" ? ["Quarter-finals", "Semi-finals", "Final & Bronze"][columnIndex] : ["Qualifier 1 / Eliminator", "Qualifier 2", "Final"][columnIndex]}</p>{column.filter((fixture) => fixture.match).map((fixture) => <div key={fixture.key} className="rounded-xl border border-white/15 bg-white p-3 text-[#18212b]"><p className="text-[10px] uppercase tracking-[0.14em] text-[#68717a]">{fixture.key}</p><p className="mt-2 text-sm font-semibold">{fixture.teamA ? teamLabel(fixture.teamA) : "TBD"}</p><p className="text-sm font-semibold">{fixture.teamB ? teamLabel(fixture.teamB) : "TBD"}</p><p className="mt-2 text-lg font-bold">{fixture.teamAScore} : {fixture.teamBScore}</p></div>)}</div>)}</div></section>}
 
