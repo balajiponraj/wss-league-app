@@ -437,6 +437,14 @@ export default function Home() {
     setNotice("Result loaded. Edit the scores and save the updated result.");
   };
 
+  const selectFixture = (fixtureKey: string) => {
+    const fixture = tournamentFixtures.find((item) => `${item.teamA.id}:${item.teamB.id}` === fixtureKey);
+    if (!fixture) return;
+    setEditingMatchId(fixture.match?.id ?? null);
+    setMatchDraft((current) => ({ ...current, teamAId: fixture.teamA.id, teamBId: fixture.teamB.id }));
+    setLiveScore({ playerA: fixture.match ? String(fixture.teamAScore) : "", playerB: fixture.match ? String(fixture.teamBScore) : "" });
+  };
+
   const clearResults = async () => {
     if (!window.confirm("Clear all saved match results? Players, pairs, and leagues will remain.")) return;
     if (hasSupabaseConfig && supabase) {
@@ -574,8 +582,9 @@ export default function Home() {
     const teamA = teamMap[matchDraft.teamAId];
     const teamB = teamMap[matchDraft.teamBId];
     const teamsBelongToTournament = Boolean(selectedTournament && teamA?.tournamentId === selectedTournament.id && teamB?.tournamentId === selectedTournament.id);
-    if (!selectedTournament || !teamA || !teamB || teamA.id === teamB.id || !teamsBelongToTournament) {
-      setNotice("Choose two different teams from the selected tournament.");
+    const exactFixture = tournamentFixtures.find((fixture) => fixture.teamA.id === teamA?.id && fixture.teamB.id === teamB?.id);
+    if (!selectedTournament || !teamA || !teamB || teamA.id === teamB.id || !teamsBelongToTournament || !exactFixture) {
+      setNotice("Select an exact fixture from the tournament fixture dropdown.");
       return;
     }
 
@@ -588,7 +597,8 @@ export default function Home() {
 
     const winnerId = playerAScore > playerBScore ? teamA.playerAId : teamB.playerAId;
 
-    const existingMatch = (editingMatchId ? matches.find((match) => match.id === editingMatchId) : undefined) ?? matches.find((match) => match.tournamentId === matchDraft.tournamentId && ((match.teamAId === teamA.id && match.teamBId === teamB.id) || (match.teamAId === teamB.id && match.teamBId === teamA.id)));
+    const selectedFixtureMatch = tournamentFixtures.find((fixture) => fixture.teamA.id === teamA.id && fixture.teamB.id === teamB.id)?.match;
+    const existingMatch = (editingMatchId ? matches.find((match) => match.id === editingMatchId) : undefined) ?? selectedFixtureMatch;
     const record: MatchRecord = {
       id: existingMatch?.id ?? createId(),
       playerAId: teamA.playerAId,
@@ -707,6 +717,11 @@ export default function Home() {
                   <select value={matchDraft.tournamentId} onChange={(event) => selectTournament(event.target.value)} className="mb-4 w-full rounded-xl border border-white/10 bg-[#121417] px-3 py-2 text-sm text-white outline-none">
                     <option value="">Select tournament</option>
                     {tournaments.map((tournament) => <option key={tournament.id} value={tournament.id}>{tournament.name}</option>)}
+                  </select>
+
+                  <select value={matchDraft.teamAId && matchDraft.teamBId ? `${matchDraft.teamAId}:${matchDraft.teamBId}` : ""} onChange={(event) => selectFixture(event.target.value)} className="mb-4 w-full rounded-xl border border-white/10 bg-[#121417] px-3 py-2 text-sm text-white outline-none">
+                    <option value="">Select fixture to score or edit</option>
+                    {tournamentFixtures.map((fixture) => <option key={`${fixture.teamA.id}:${fixture.teamB.id}`} value={`${fixture.teamA.id}:${fixture.teamB.id}`}>{teamLabel(fixture.teamA)} vs {teamLabel(fixture.teamB)}{fixture.match ? " (saved)" : ""}</option>)}
                   </select>
 
                   <div className="grid gap-3 md:grid-cols-2">
