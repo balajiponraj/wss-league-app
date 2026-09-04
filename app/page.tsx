@@ -267,7 +267,12 @@ export default function Home() {
   const teamMap = useMemo(() => Object.fromEntries(teams.map((team) => [team.id, team])), [teams]);
 
   const teamLabel = (team: Team) =>
-    `${playerMap[team.playerAId]?.name ?? "Player"} / ${playerMap[team.playerBId]?.name ?? "Player"} (${team.group_name})`;
+    `${playerMap[team.playerAId]?.name ?? "Player"} / ${playerMap[team.playerBId]?.name ?? "Player"} (${teamGroup(team)})`;
+
+  const teamGroup = (team: Team) => {
+    const playerGroup = playerMap[team.playerAId]?.group_name;
+    return playerGroup && groupOptions.includes(playerGroup) ? playerGroup : team.group_name;
+  };
 
   const selectedTournament = tournaments.find((tournament) => tournament.id === matchDraft.tournamentId);
   const tournamentTeams = teams.filter((team) => team.tournamentId === selectedTournament?.id);
@@ -278,7 +283,7 @@ export default function Home() {
     const tournamentTeams = teams.filter((team) => team.tournamentId === selectedTournament.id);
     const fixtures: { teamA: Team; teamB: Team; match?: MatchRecord; teamAScore?: number; teamBScore?: number }[] = [];
     tournamentTeams.forEach((teamA, index) => tournamentTeams.slice(index + 1).forEach((teamB) => {
-      if (selectedTournament.format === "external" && teamA.group_name === teamB.group_name) return;
+      if (selectedTournament.format === "external" && teamGroup(teamA) === teamGroup(teamB)) return;
       const match = matches.find((item) => item.tournamentId === selectedTournament.id && ((item.teamAId === teamA.id && item.teamBId === teamB.id) || (item.teamAId === teamB.id && item.teamBId === teamA.id)));
       const teamsMatchStoredOrder = match?.teamAId === teamA.id;
       fixtures.push({
@@ -291,17 +296,23 @@ export default function Home() {
     }));
     return fixtures;
   }, [matches, selectedTournament, teams]);
-  const eligibleTeamA = tournamentTeams.filter((team) => team.group_name === team1Group);
-  const eligibleTeamB = tournamentTeams.filter((team) => {
-    if (team.id === matchDraft.teamAId) return false;
-    return team.group_name === team2Group;
-  });
+  const eligibleTeamA = useMemo(() => tournamentTeams.filter((team) => teamGroup(team) === team1Group), [tournamentTeams, team1Group, playerMap]);
+  const eligibleTeamB = useMemo(() => tournamentTeams.filter((team) => team.id !== matchDraft.teamAId && teamGroup(team) === team2Group), [tournamentTeams, matchDraft.teamAId, team2Group, playerMap]);
+
+  useEffect(() => {
+    if (!selectedTournament) return;
+    setMatchDraft((current) => {
+      const nextTeamA = eligibleTeamA.some((team) => team.id === current.teamAId) ? current.teamAId : eligibleTeamA[0]?.id ?? "";
+      const nextTeamB = eligibleTeamB.some((team) => team.id === current.teamBId) ? current.teamBId : eligibleTeamB.find((team) => team.id !== nextTeamA)?.id ?? "";
+      return { ...current, teamAId: nextTeamA, teamBId: nextTeamB };
+    });
+  }, [matchDraft.tournamentId, selectedTournament?.id, teams]);
 
   const fixtureCount = (tournament: Tournament) => {
     const tournamentTeams = teams.filter((team) => team.tournamentId === tournament.id);
     if (tournament.format === "internal") return (tournamentTeams.length * Math.max(tournamentTeams.length - 1, 0)) / 2;
-    const groupA = tournamentTeams.filter((team) => team.group_name === tournament.group_a).length;
-    const groupB = tournamentTeams.filter((team) => team.group_name === tournament.group_b).length;
+    const groupA = tournamentTeams.filter((team) => teamGroup(team) === tournament.group_a).length;
+    const groupB = tournamentTeams.filter((team) => teamGroup(team) === tournament.group_b).length;
     return groupA * groupB;
   };
 
@@ -480,7 +491,7 @@ export default function Home() {
     setTournamentDraft({ name: tournament.name, format: tournament.format, event_date: easternIsoToLocal(tournament.event_date), location: tournament.location, group_a: tournament.group_a, group_b: tournament.group_b, teams_per_group: tournament.teams_per_group });
     const tournamentTeams = teams.filter((team) => team.tournamentId === tournament.id);
     const groups = tournament.format === "internal" ? (["a"] as const) : (["a", "b"] as const);
-    setPairNames(groups.flatMap((group) => tournamentTeams.filter((team) => team.group_name === (group === "a" ? tournament.group_a : tournament.group_b)).map((team, index) => ({ group, index, player1: team.playerAId, player2: team.playerBId }))));
+    setPairNames(groups.flatMap((group) => tournamentTeams.filter((team) => teamGroup(team) === (group === "a" ? tournament.group_a : tournament.group_b)).map((team, index) => ({ group, index, player1: team.playerAId, player2: team.playerBId }))));
     setTab("tournaments");
     setNotice(`Editing ${tournament.name}. Update the details and save.`);
   };
@@ -560,8 +571,8 @@ export default function Home() {
   const saveMatch = async () => {
     const teamA = teamMap[matchDraft.teamAId];
     const teamB = teamMap[matchDraft.teamBId];
-    if (!teamA || !teamB || teamA.id === teamB.id) {
-      setNotice("Choose two different doubles teams to save a match.");
+    if (!selectedTournament || !teamA || !teamB || teamA.id === teamB.id || !eligibleTeamA.some((team) => team.id === teamA.id) || !eligibleTeamB.some((team) => team.id === teamB.id)) {
+      setNotice("Choose one valid team from each side of the selected tournament.");
       return;
     }
 
