@@ -47,12 +47,14 @@ type Tournament = {
   teams_per_group: number;
 };
 
+type Group = { id: string; name: string };
+
 type PairInput = { group: "a" | "b"; index: number; player1: string; player2: string };
 
 type TabName = "dashboard" | "players" | "teams" | "tournaments" | "standings" | "playoffs" | "matches";
 
 const STORAGE_KEY = "wss-badminton-db-v1";
-const groupOptions = ["WSS", "FFBC", "SW", "SSBC", "DBCC", "DCSC"];
+const defaultGroupOptions = ["WSS", "FFBC", "SW", "SSBC", "DBCC", "DCSC"];
 const normalizeGroup = (value: string | undefined) => value?.trim().toUpperCase() ?? "";
 const easternTimeZone = "America/Toronto";
 
@@ -130,6 +132,7 @@ export default function Home() {
   const [matches, setMatches] = useState<MatchRecord[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
+  const [groups, setGroups] = useState<Group[]>(defaultGroupOptions.map((name) => ({ id: name, name })));
   const [tab, setTab] = useState<TabName>("dashboard");
   const [newPlayer, setNewPlayer] = useState({ name: "", group_name: "WSS" });
   const [liveScore, setLiveScore] = useState({ playerA: "", playerB: "" });
@@ -155,20 +158,24 @@ export default function Home() {
   const [authEmail, setAuthEmail] = useState("");
   const [authPassword, setAuthPassword] = useState("");
   const [authBusy, setAuthBusy] = useState(false);
+  const [newGroupName, setNewGroupName] = useState("");
   const [notice, setNotice] = useState("Local storage mode enabled. Connect Supabase for live database storage.");
+  const groupOptions = groups.map((group) => group.name);
 
   const refreshDatabase = useCallback(async () => {
     if (!supabase) return;
-    const [{ data: nextPlayers }, { data: nextMatches }, { data: nextTeams }, { data: nextTournaments }] = await Promise.all([
+    const [{ data: nextPlayers }, { data: nextMatches }, { data: nextTeams }, { data: nextTournaments }, { data: nextGroups }] = await Promise.all([
       supabase.from("players").select("*"),
       supabase.from("matches").select("*"),
       supabase.from("teams").select("*"),
       supabase.from("tournaments").select("*"),
+      supabase.from("groups").select("*").order("name"),
     ]);
     setPlayers((nextPlayers ?? []) as Player[]);
     setMatches((nextMatches ?? []) as MatchRecord[]);
     setTeams((nextTeams ?? []) as Team[]);
     setTournaments((nextTournaments ?? []) as Tournament[]);
+    setGroups(nextGroups?.length ? (nextGroups as Group[]) : groups);
   }, []);
 
   useEffect(() => {
@@ -198,6 +205,25 @@ export default function Home() {
     await supabase.auth.signOut();
     setTab("dashboard");
     setNotice("Signed out. Public result access remains available.");
+  };
+
+  const createGroup = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const name = newGroupName.trim().toUpperCase();
+    if (!name || groupOptions.includes(name)) {
+      setNotice("Enter a new group name.");
+      return;
+    }
+    const group = { id: name, name };
+    if (hasSupabaseConfig && supabase) {
+      const { error } = await supabase.from("groups").insert([group]);
+      if (error) { setNotice(`Group save failed: ${error.message}`); return; }
+      await refreshDatabase();
+    } else {
+      setGroups((current) => [...current, group].sort((a, b) => a.name.localeCompare(b.name)));
+    }
+    setNewGroupName("");
+    setNotice(`${name} group is ready to use.`);
   };
 
   useEffect(() => {
@@ -238,8 +264,9 @@ export default function Home() {
       const { data: matchesData, error: matchesError } = await client.from("matches").select("*");
       const { data: teamsData, error: teamsError } = await client.from("teams").select("*");
       const { data: tournamentsData, error: tournamentsError } = await client.from("tournaments").select("*");
+      const { data: groupsData, error: groupsError } = await client.from("groups").select("*").order("name");
 
-      if (playersError || matchesError || teamsError || tournamentsError) {
+      if (playersError || matchesError || teamsError || tournamentsError || groupsError) {
         setNotice("Supabase connection is set, but tables are not ready yet.");
         loadLocalData();
         return;
@@ -253,6 +280,7 @@ export default function Home() {
       setMatches(nextMatches);
       setTeams(nextTeams);
       setTournaments(nextTournaments);
+      setGroups(groupsData?.length ? (groupsData as Group[]) : groups);
       setTeamDraft((current) => ({ ...current, playerAId: current.playerAId || nextPlayers[0]?.id || "", playerBId: current.playerBId || nextPlayers[1]?.id || "" }));
       setMatchDraft((current) => ({ ...current, teamAId: current.teamAId || nextTeams[0]?.id || "", teamBId: current.teamBId || nextTeams[1]?.id || "", tournamentId: current.tournamentId || nextTournaments[0]?.id || "" }));
       setNotice("Connected to Supabase. Live sync is active.");
@@ -266,6 +294,7 @@ export default function Home() {
       .on("postgres_changes", { event: "*", schema: "public", table: "matches" }, loadSupabaseData)
       .on("postgres_changes", { event: "*", schema: "public", table: "teams" }, loadSupabaseData)
       .on("postgres_changes", { event: "*", schema: "public", table: "tournaments" }, loadSupabaseData)
+      .on("postgres_changes", { event: "*", schema: "public", table: "groups" }, loadSupabaseData)
       .subscribe((status) => {
         if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
           setNotice("Database connected, but live sync is unavailable. Refresh to update.");
@@ -1024,6 +1053,11 @@ export default function Home() {
                   >
                     Save player
                   </button>
+                </form>
+                <form onSubmit={createGroup} className="mt-8 space-y-3 border-t border-white/10 pt-6">
+                  <p className="text-[10px] uppercase tracking-[0.25em] text-[#f7c62f]">Create group</p>
+                  <input required value={newGroupName} onChange={(event) => setNewGroupName(event.target.value)} placeholder="New group name" className="w-full rounded-xl border border-white/10 bg-[#101316] px-3 py-2.5 text-sm text-white outline-none" />
+                  <button type="submit" className="w-full rounded-full border border-[#f7c62f]/50 px-4 py-3 text-sm font-semibold text-[#f7c62f]">Add group</button>
                 </form>
                 <form onSubmit={deletePlayer} className="mt-8 space-y-4 border-t border-white/10 pt-6">
                   <p className="text-[10px] uppercase tracking-[0.25em] text-rose-300">Delete player</p>

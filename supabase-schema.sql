@@ -1,3 +1,13 @@
+create table if not exists public.groups (
+  id text primary key,
+  name text not null unique
+);
+
+insert into public.groups (id, name) values
+  ('WSS', 'WSS'), ('FFBC', 'FFBC'), ('SW', 'SW'),
+  ('SSBC', 'SSBC'), ('DBCC', 'DBCC'), ('DCSC', 'DCSC')
+on conflict (id) do nothing;
+
 create table if not exists public.players (
   id text primary key,
   name text not null,
@@ -59,8 +69,11 @@ alter table public.players enable row level security;
 alter table public.matches enable row level security;
 alter table public.teams enable row level security;
 alter table public.tournaments enable row level security;
+alter table public.groups enable row level security;
 
 drop policy if exists "WSS players can be read" on public.players;
+drop policy if exists "WSS groups can be read" on public.groups;
+drop policy if exists "WSS groups can be added by admins" on public.groups;
 drop policy if exists "WSS players can be added" on public.players;
 drop policy if exists "WSS players can be added by admins" on public.players;
 drop policy if exists "WSS players can be deleted" on public.players;
@@ -89,6 +102,9 @@ create policy "WSS players can be read"
   on public.players for select
   to anon, authenticated
   using (true);
+
+create policy "WSS groups can be read" on public.groups for select to anon, authenticated using (true);
+create policy "WSS groups can be added by admins" on public.groups for insert to authenticated with check (true);
 
 create policy "WSS players can be added by admins"
   on public.players for insert
