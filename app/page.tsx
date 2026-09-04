@@ -355,7 +355,7 @@ export default function Home() {
   const standingsTournament = tournaments.find((tournament) => tournament.id === standingsTournamentId) ?? tournaments[0];
   const playoffTournament = tournaments.find((tournament) => tournament.id === playoffTournamentId) ?? tournaments[0];
   const teamStandings = useMemo(() => {
-    const tournamentMatches = matches.filter((match) => match.tournamentId === standingsTournament?.id && match.teamAId && match.teamBId);
+    const tournamentMatches = matches.filter((match) => match.tournamentId === standingsTournament?.id && match.teamAId && match.teamBId && (!match.stage || match.stage === "round_robin"));
     return teams.filter((team) => team.tournamentId === standingsTournament?.id).map((team) => {
       const teamMatches = tournamentMatches.filter((match) => match.teamAId === team.id || match.teamBId === team.id);
       const wins = teamMatches.filter((match) => {
@@ -373,7 +373,7 @@ export default function Home() {
   const playoffStandings = useMemo(() => {
     if (!playoffTournament) return [];
     return teams.filter((team) => team.tournamentId === playoffTournament.id).map((team) => {
-      const games = matches.filter((match) => match.tournamentId === playoffTournament.id && !match.stage && (match.teamAId === team.id || match.teamBId === team.id));
+      const games = matches.filter((match) => match.tournamentId === playoffTournament.id && (!match.stage || match.stage === "round_robin") && (match.teamAId === team.id || match.teamBId === team.id));
       const wins = games.filter((match) => match.teamAId === team.id ? match.playerAScore > match.playerBScore : match.playerBScore > match.playerAScore).length;
       const pf = games.reduce((sum, match) => sum + (match.teamAId === team.id ? match.playerAScore : match.playerBScore), 0);
       const pa = games.reduce((sum, match) => sum + (match.teamAId === team.id ? match.playerBScore : match.playerAScore), 0);
@@ -383,7 +383,7 @@ export default function Home() {
 
   const playoffMatch = (key: string, teamA?: Team, teamB?: Team) => {
     const saved = matches.find((match) => match.tournamentId === playoffTournament?.id && match.stage && match.bracketKey === key);
-    return { key, teamA, teamB, match: saved };
+    return { key, teamA, teamB, match: saved, teamAScore: saved?.playerAScore, teamBScore: saved?.playerBScore };
   };
 
   const winnerOf = (key: string) => {
@@ -403,9 +403,9 @@ export default function Home() {
     if (playoffTournament.format === "internal") {
       const q1 = playoffMatch("q1", playoffStandings[0]?.team, playoffStandings[1]?.team);
       const elim = playoffMatch("eliminator", playoffStandings[2]?.team, playoffStandings[3]?.team);
-      const q2 = playoffMatch("q2", winnerOf("eliminator"), playoffStandings[1]?.team);
+      const q2 = playoffMatch("q2", loserOf("q1"), winnerOf("eliminator"));
       const final = playoffMatch("final", winnerOf("q1"), winnerOf("q2"));
-      return { columns: [[q1, elim], [q2], [final]], podium: [winnerOf("final"), winnerOf("q1"), winnerOf("q2")] };
+      return { columns: [[q1, elim], [q2], [final]], podium: [winnerOf("final"), loserOf("final"), loserOf("q2")] };
     }
     const q = [0, 1, 2, 3].map((index) => playoffMatch(`qf${index + 1}`, playoffStandings[index]?.team, playoffStandings[7 - index]?.team));
     const sf1 = playoffMatch("sf1", winnerOf("qf1"), winnerOf("qf2"));
@@ -916,6 +916,8 @@ export default function Home() {
                   </div>
                 </div>
               </section>
+
+              {selectedTournament && playoffBracket.columns.some((column) => column.some((fixture) => fixture.match)) && <section className="rounded-[26px] border border-[#d9d3d0] bg-[#182f4d] p-5 text-white"><div className="flex items-center justify-between"><div><p className="text-[10px] uppercase tracking-[0.25em] text-amber-200">Knockout results</p><h2 className="mt-1 text-2xl font-semibold">{selectedTournament.name} playoff results</h2></div><span className="text-xs uppercase tracking-[0.16em] text-slate-300">{selectedTournament.format === "external" ? "Quarter-finals · Semi-finals · Final · Bronze" : "Qualifier 1 · Eliminator · Qualifier 2 · Final"}</span></div><div className="mt-5 grid gap-4 md:grid-cols-3">{playoffBracket.columns.map((column, columnIndex) => <div key={columnIndex} className="space-y-3"><p className="text-xs font-semibold uppercase tracking-[0.16em] text-amber-200">{selectedTournament.format === "external" ? ["Quarter-finals", "Semi-finals", "Final & Bronze"][columnIndex] : ["Qualifier 1 / Eliminator", "Qualifier 2", "Final"][columnIndex]}</p>{column.filter((fixture) => fixture.match).map((fixture) => <div key={fixture.key} className="rounded-xl border border-white/15 bg-white p-3 text-[#18212b]"><p className="text-[10px] uppercase tracking-[0.14em] text-[#68717a]">{fixture.key}</p><p className="mt-2 text-sm font-semibold">{fixture.teamA ? teamLabel(fixture.teamA) : "TBD"}</p><p className="text-sm font-semibold">{fixture.teamB ? teamLabel(fixture.teamB) : "TBD"}</p><p className="mt-2 text-lg font-bold">{fixture.teamAScore} : {fixture.teamBScore}</p></div>)}</div>)}</div></section>}
 
               <section className="rounded-[26px] border border-[#d9d3d0] bg-[#f9f7f5] p-5">
                 <div className="flex items-center justify-between gap-3">
