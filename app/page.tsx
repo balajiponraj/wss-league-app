@@ -241,7 +241,10 @@ export default function Home() {
     const tournamentId = matchDraft.tournamentId;
     return teams.map((team) => {
       const teamMatches = matches.filter((match) => match.tournamentId === tournamentId && (match.teamAId === team.id || match.teamBId === team.id));
-      const wins = teamMatches.filter((match) => match.winnerId === team.playerAId || match.winnerId === team.playerBId).length;
+      const wins = teamMatches.filter((match) => {
+        const teamIsA = match.teamAId === team.id;
+        return teamIsA ? match.playerAScore > match.playerBScore : match.playerBScore > match.playerAScore;
+      }).length;
       const pointsFor = teamMatches.reduce((total, match) => total + (match.teamAId === team.id ? match.playerAScore : match.playerBScore), 0);
       const pointsAgainst = teamMatches.reduce((total, match) => total + (match.teamAId === team.id ? match.playerBScore : match.playerAScore), 0);
       return { team, matches: teamMatches.length, wins, difference: pointsFor - pointsAgainst };
@@ -324,7 +327,10 @@ export default function Home() {
     const tournamentMatches = matches.filter((match) => match.tournamentId === standingsTournament?.id && match.teamAId && match.teamBId);
     return teams.filter((team) => team.tournamentId === standingsTournament?.id).map((team) => {
       const teamMatches = tournamentMatches.filter((match) => match.teamAId === team.id || match.teamBId === team.id);
-      const wins = teamMatches.filter((match) => match.winnerId === team.playerAId || match.winnerId === team.playerBId).length;
+      const wins = teamMatches.filter((match) => {
+        const teamIsA = match.teamAId === team.id;
+        return teamIsA ? match.playerAScore > match.playerBScore : match.playerBScore > match.playerAScore;
+      }).length;
       const pointsFor = teamMatches.reduce((total, match) => total + (match.teamAId === team.id ? match.playerAScore : match.playerBScore), 0);
       const pointsAgainst = teamMatches.reduce((total, match) => total + (match.teamAId === team.id ? match.playerBScore : match.playerAScore), 0);
       return { team, played: teamMatches.length, wins, pointsFor, pointsAgainst, difference: pointsFor - pointsAgainst };
