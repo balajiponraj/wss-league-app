@@ -273,11 +273,18 @@ export default function Home() {
   const tournamentFixtures = useMemo(() => {
     if (!selectedTournament) return [];
     const tournamentTeams = teams.filter((team) => team.tournamentId === selectedTournament.id);
-    const fixtures: { teamA: Team; teamB: Team; match?: MatchRecord }[] = [];
+    const fixtures: { teamA: Team; teamB: Team; match?: MatchRecord; teamAScore?: number; teamBScore?: number }[] = [];
     tournamentTeams.forEach((teamA, index) => tournamentTeams.slice(index + 1).forEach((teamB) => {
       if (selectedTournament.format === "external" && teamA.group_name === teamB.group_name) return;
       const match = matches.find((item) => item.tournamentId === selectedTournament.id && ((item.teamAId === teamA.id && item.teamBId === teamB.id) || (item.teamAId === teamB.id && item.teamBId === teamA.id)));
-      fixtures.push({ teamA, teamB, match });
+      const teamsMatchStoredOrder = match?.teamAId === teamA.id;
+      fixtures.push({
+        teamA,
+        teamB,
+        match,
+        teamAScore: match ? (teamsMatchStoredOrder ? match.playerAScore : match.playerBScore) : undefined,
+        teamBScore: match ? (teamsMatchStoredOrder ? match.playerBScore : match.playerAScore) : undefined,
+      });
     }));
     return fixtures;
   }, [matches, selectedTournament, teams]);
@@ -743,10 +750,10 @@ export default function Home() {
               <section className="rounded-[26px] border border-[#d9d3d0] bg-[#f9f7f5] p-5">
                 <div className="flex items-center justify-between gap-3">
                   <div><p className="text-[10px] uppercase tracking-[0.25em] text-[#696f77]">Round robin fixtures</p><h2 className="mt-1 text-2xl font-semibold text-[#181a1d]">{selectedTournament?.name ?? "Select a tournament"}</h2></div>
-                  <span className="text-sm text-[#626972]">{tournamentFixtures.length} fixtures</span>
+                  <div className="text-right"><p className="text-sm font-semibold text-[#30343a]">{tournamentFixtures.length} total</p><p className="text-xs uppercase tracking-[0.14em] text-emerald-700">{tournamentFixtures.filter((fixture) => fixture.match).length} completed</p></div>
                 </div>
                 <div className="mt-5 grid gap-3 md:grid-cols-2">
-                  {tournamentFixtures.map((fixture) => <div key={`${fixture.teamA.id}-${fixture.teamB.id}`} className="rounded-[18px] border border-[#e4dfdc] bg-white p-4"><div className="flex items-center justify-between gap-3"><p className="font-semibold text-[#17191d]">{teamLabel(fixture.teamA)} <span className="text-[#8a9097]">vs</span> {teamLabel(fixture.teamB)}</p><span className={`rounded-full px-2 py-1 text-[10px] uppercase tracking-[0.14em] ${fixture.match ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>{fixture.match ? "Completed" : "Pending"}</span></div><p className="mt-3 text-sm text-[#626972]">{fixture.match ? `${fixture.match.playerAScore} : ${fixture.match.playerBScore}` : "No score yet"}</p></div>)}
+                  {tournamentFixtures.map((fixture) => <div key={`${fixture.teamA.id}-${fixture.teamB.id}`} className="rounded-[18px] border border-[#e4dfdc] bg-white p-4"><div className="flex items-center justify-between gap-3"><p className="font-semibold text-[#17191d]">{teamLabel(fixture.teamA)} <span className="text-[#8a9097]">vs</span> {teamLabel(fixture.teamB)}</p><span className={`rounded-full px-2 py-1 text-[10px] uppercase tracking-[0.14em] ${fixture.match ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>{fixture.match ? "Completed" : "Pending"}</span></div><p className="mt-3 text-sm text-[#626972]">{fixture.match ? `${fixture.teamAScore} : ${fixture.teamBScore}` : "No score yet"}</p></div>)}
                   {!tournamentFixtures.length && <p className="text-sm text-[#626972]">Select a tournament with saved pairs to see its fixtures.</p>}
                 </div>
               </section>
