@@ -997,10 +997,10 @@ export default function Home() {
                     onClick={saveMatch}
                     className="dashboard-save-result mt-5 w-full rounded-full px-4 py-3 text-sm font-semibold"
                     style={{
-                      background: "linear-gradient(100deg, #8b6312 0%, #d8aa2e 25%, #fff1a4 51%, #e8bd45 68%, #996d13 100%)",
-                      color: "#31230b",
-                      border: "1px solid rgba(118, 82, 12, 0.58)",
-                      boxShadow: "0 12px 19px rgba(93, 67, 17, 0.32), inset 0 1px rgba(255,255,255,0.78), inset 0 -2px rgba(91,59,5,0.2)",
+                      background: "#f7c62f",
+                      color: "#071a2d",
+                      border: "1px solid #d5a51f",
+                      boxShadow: "0 5px 12px rgba(65, 48, 9, 0.25), inset 0 1px rgba(255,255,255,0.45)",
                     }}
                   >
                     Save match result
@@ -1026,11 +1026,11 @@ export default function Home() {
                             className={`rank-medal rank-medal-${index + 1} flex items-center justify-center text-sm font-semibold`}
                             style={
                               index === 0
-                                ? { width: 48, height: 54, background: "linear-gradient(145deg, #fff1a7, #c99418)", color: "#17263a", border: "2px solid #b07e12", clipPath: "polygon(50% 0%, 92% 11%, 100% 69%, 50% 100%, 0% 69%, 8% 11%)", boxShadow: "0 6px 13px rgba(128,89,10,0.35)" }
+                                ? { width: 52, height: 58, background: "linear-gradient(145deg, #fff4af, #e0ae29 58%, #a8750d)", color: "#17263a", border: "2px solid #9a6d0b", clipPath: "polygon(50% 0%, 92% 11%, 100% 69%, 50% 100%, 0% 69%, 8% 11%)", boxShadow: "0 7px 15px rgba(128,89,10,0.42), inset 0 2px rgba(255,255,255,0.72)" }
                                 : index === 1
-                                  ? { width: 45, height: 45, borderRadius: "50%", background: "linear-gradient(145deg, #fff9da, #b8c0c9)", color: "#17263a", border: "2px solid #c99418", boxShadow: "0 5px 11px rgba(128,89,10,0.28)" }
+                                  ? { width: 48, height: 48, borderRadius: "50%", background: "linear-gradient(145deg, #ffffff, #b9c3ce)", color: "#17263a", border: "3px solid #c99418", boxShadow: "0 6px 13px rgba(128,89,10,0.32), inset 0 2px rgba(255,255,255,0.8)" }
                                   : index === 2
-                                    ? { width: 45, height: 45, background: "linear-gradient(145deg, #e7ad78, #9c5d35)", color: "#17263a", border: "2px solid #a9683d", clipPath: "polygon(50% 0%, 90% 18%, 100% 66%, 70% 100%, 30% 100%, 0% 66%, 10% 18%)", boxShadow: "0 5px 11px rgba(128,89,10,0.28)" }
+                                    ? { width: 48, height: 48, background: "linear-gradient(145deg, #f0b47b, #a9693d 62%, #784328)", color: "#17263a", border: "2px solid #8d542f", clipPath: "polygon(50% 0%, 90% 18%, 100% 66%, 70% 100%, 30% 100%, 0% 66%, 10% 18%)", boxShadow: "0 6px 13px rgba(128,89,10,0.32), inset 0 2px rgba(255,255,255,0.55)" }
                                     : { width: 42, height: 42, borderRadius: "50%", background: "linear-gradient(145deg, #fffdf4, #d8d1c0)", color: "#17263a", border: "2px solid #b89543" }
                             }
                           >
