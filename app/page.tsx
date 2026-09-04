@@ -51,6 +51,38 @@ type TabName = "dashboard" | "players" | "teams" | "tournaments" | "standings" |
 
 const STORAGE_KEY = "wss-badminton-db-v1";
 const groupOptions = ["WSS", "FFBC", "SW", "SSBC", "DBCC", "DCSC"];
+const easternTimeZone = "America/Toronto";
+
+const easternLocalToIso = (value: string) => {
+  if (!value) return "";
+  const localUtc = new Date(`${value}:00Z`);
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: easternTimeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(localUtc);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  const easternAsUtc = Date.UTC(Number(values.year), Number(values.month) - 1, Number(values.day), Number(values.hour), Number(values.minute), Number(values.second));
+  const offsetMinutes = (easternAsUtc - localUtc.getTime()) / 60000;
+  return new Date(localUtc.getTime() - offsetMinutes * 60000).toISOString();
+};
+
+const formatEasternTime = (value: string) =>
+  value
+    ? new Intl.DateTimeFormat("en-US", { timeZone: easternTimeZone, dateStyle: "medium", timeStyle: "short" }).format(new Date(value)) + " ET"
+    : "Date to be announced";
+
+const easternIsoToLocal = (value: string) => {
+  if (!value) return "";
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: easternTimeZone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date(value));
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}T${values.hour}:${values.minute}`;
+};
 
 const defaultPlayers: Player[] = [
   { id: "p1", name: "Nattu", group_name: "A" },
@@ -408,7 +440,7 @@ export default function Home() {
 
   const editTournament = (tournament: Tournament) => {
     setEditingTournamentId(tournament.id);
-    setTournamentDraft({ name: tournament.name, format: tournament.format, event_date: tournament.event_date ? tournament.event_date.slice(0, 16) : "", location: tournament.location, group_a: tournament.group_a, group_b: tournament.group_b, teams_per_group: tournament.teams_per_group });
+    setTournamentDraft({ name: tournament.name, format: tournament.format, event_date: easternIsoToLocal(tournament.event_date), location: tournament.location, group_a: tournament.group_a, group_b: tournament.group_b, teams_per_group: tournament.teams_per_group });
     const tournamentTeams = teams.filter((team) => team.tournamentId === tournament.id);
     const groups = tournament.format === "internal" ? (["a"] as const) : (["a", "b"] as const);
     setPairNames(groups.flatMap((group) => tournamentTeams.filter((team) => team.group_name === (group === "a" ? tournament.group_a : tournament.group_b)).map((team, index) => ({ group, index, player1: team.playerAId, player2: team.playerBId }))));
@@ -429,7 +461,7 @@ export default function Home() {
       format: tournamentDraft.format,
       status: "active",
       created_at: new Date().toISOString(),
-      event_date: tournamentDraft.event_date,
+      event_date: easternLocalToIso(tournamentDraft.event_date),
       location: tournamentDraft.location.trim(),
       group_a: tournamentDraft.group_a,
       group_b: tournamentDraft.format === "internal" ? tournamentDraft.group_a : tournamentDraft.group_b,
@@ -884,7 +916,7 @@ export default function Home() {
               <div className="rounded-[26px] border border-[#d9d3d0] bg-[#f9f7f5] p-5">
                 <p className="text-[10px] uppercase tracking-[0.25em] text-[#696f77]">Competition calendar</p>
                 <h2 className="mt-2 text-2xl font-semibold text-[#181a1d]">Your leagues</h2>
-                <div className="mt-5 space-y-3">{tournaments.map((tournament) => <div key={tournament.id} className="rounded-[20px] border border-[#e4dfdc] bg-white p-4"><div className="flex items-center justify-between gap-3"><p className="font-semibold text-[#17191d]">{tournament.name}</p><span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] uppercase text-emerald-700">{tournament.format}</span></div><p className="mt-2 text-sm text-[#626972]">{tournament.format === "internal" ? "All enrolled teams play one another." : "Teams play the teams in the opposite group."}</p><p className="mt-2 text-xs text-[#626972]">{tournament.event_date ? new Date(tournament.event_date).toLocaleString() : "Date to be announced"}{tournament.location ? ` · ${tournament.location}` : ""}</p><div className="mt-4 flex gap-2"><button type="button" onClick={() => editTournament(tournament)} className="rounded-full border border-[#cdd8f7] px-3 py-1.5 text-xs font-semibold text-[#3949ab]">Edit league</button><button type="button" onClick={() => { if (window.confirm(`Delete ${tournament.name} and all its pairs and results?`)) void deleteTournament(tournament); }} className="rounded-full border border-rose-200 px-3 py-1.5 text-xs font-semibold text-rose-700">Delete league</button></div></div>)}</div>
+                <div className="mt-5 space-y-3">{tournaments.map((tournament) => <div key={tournament.id} className="rounded-[20px] border border-[#e4dfdc] bg-white p-4"><div className="flex items-center justify-between gap-3"><p className="font-semibold text-[#17191d]">{tournament.name}</p><span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] uppercase text-emerald-700">{tournament.format}</span></div><p className="mt-2 text-sm text-[#626972]">{tournament.format === "internal" ? "All enrolled teams play one another." : "Teams play the teams in the opposite group."}</p><p className="mt-2 text-xs text-[#626972]">{formatEasternTime(tournament.event_date)}{tournament.location ? ` · ${tournament.location}` : ""}</p><div className="mt-4 flex gap-2"><button type="button" onClick={() => editTournament(tournament)} className="rounded-full border border-[#cdd8f7] px-3 py-1.5 text-xs font-semibold text-[#3949ab]">Edit league</button><button type="button" onClick={() => { if (window.confirm(`Delete ${tournament.name} and all its pairs and results?`)) void deleteTournament(tournament); }} className="rounded-full border border-rose-200 px-3 py-1.5 text-xs font-semibold text-rose-700">Delete league</button></div></div>)}</div>
               </div>
             </section>
           )}
