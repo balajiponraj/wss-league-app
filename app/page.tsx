@@ -150,6 +150,11 @@ export default function Home() {
   const [playoffTournamentId, setPlayoffTournamentId] = useState("");
   const [playoffScores, setPlayoffScores] = useState<Record<string, { a: string; b: string }>>({});
   const [standingsTournamentId, setStandingsTournamentId] = useState("");
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [showLogin, setShowLogin] = useState(false);
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authBusy, setAuthBusy] = useState(false);
   const [notice, setNotice] = useState("Local storage mode enabled. Connect Supabase for live database storage.");
 
   const refreshDatabase = useCallback(async () => {
@@ -165,6 +170,35 @@ export default function Home() {
     setTeams((nextTeams ?? []) as Team[]);
     setTournaments((nextTournaments ?? []) as Tournament[]);
   }, []);
+
+  useEffect(() => {
+    if (!supabase) return;
+    void supabase.auth.getSession().then(({ data }) => setIsAuthenticated(Boolean(data.session)));
+    const { data } = supabase.auth.onAuthStateChange((_event, session) => setIsAuthenticated(Boolean(session)));
+    return () => data.subscription.unsubscribe();
+  }, []);
+
+  const handleLogin = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!supabase) return;
+    setAuthBusy(true);
+    const { error } = await supabase.auth.signInWithPassword({ email: authEmail.trim(), password: authPassword });
+    setAuthBusy(false);
+    if (error) {
+      setNotice(`Login failed: ${error.message}`);
+      return;
+    }
+    setAuthPassword("");
+    setShowLogin(false);
+    setNotice("Admin access enabled.");
+  };
+
+  const handleLogout = async () => {
+    if (!supabase) return;
+    await supabase.auth.signOut();
+    setTab("dashboard");
+    setNotice("Signed out. Public result access remains available.");
+  };
 
   useEffect(() => {
     const loadLocalData = () => {
@@ -767,10 +801,9 @@ export default function Home() {
             <nav className="flex flex-wrap items-center gap-2">
               {[
                 { key: "dashboard", label: "Dashboard" },
-                { key: "players", label: "Players" },
-                { key: "tournaments", label: "Leagues" },
                 { key: "standings", label: "Standings" },
                 { key: "playoffs", label: "Playoff bracket" },
+                ...(isAuthenticated ? [{ key: "players", label: "Players" }, { key: "tournaments", label: "Leagues" }] : []),
               ].map((item) => (
                 <button
                   key={item.key}
@@ -785,26 +818,15 @@ export default function Home() {
                   {item.label}
                 </button>
               ))}
+              {isAuthenticated ? <button type="button" onClick={() => void handleLogout()} className="rounded-full bg-white px-4 py-2 text-sm font-medium text-[#3b3d42]">Log out</button> : <button type="button" onClick={() => setShowLogin(true)} className="rounded-full bg-[#17191d] px-4 py-2 text-sm font-medium text-white">Admin login</button>}
             </nav>
           </div>
         </header>
 
         <main className="space-y-6">
-          <div className="rounded-[24px] border border-[#ddd5d1] bg-white/60 p-3 shadow-[0_10px_25px_rgba(17,24,39,0.04)]">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="text-xs uppercase tracking-[0.2em] text-[#6b7078]">System status</p>
-                <p className="text-sm font-medium text-[#202328]">{notice}</p>
-              </div>
-              <div className={`rounded-full border px-3 py-1 text-xs font-medium uppercase tracking-[0.2em] ${
-                hasSupabaseConfig
-                  ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                  : "border-amber-200 bg-amber-50 text-amber-700"
-              }`}>
-                {hasSupabaseConfig ? "LIVE SYNC" : "LOCAL MODE"}
-              </div>
-            </div>
-          </div>
+          {notice && notice !== "Connected to Supabase. Live sync is active." && <p className="sr-only" aria-live="polite">{notice}</p>}
+
+          {showLogin && <div className="rounded-[24px] border border-[#d9d3d0] bg-[#191c20] p-5 text-white"><div className="flex items-center justify-between"><div><p className="text-[10px] uppercase tracking-[0.25em] text-slate-400">Restricted area</p><h2 className="mt-1 text-2xl font-semibold">Admin login</h2></div><button type="button" onClick={() => setShowLogin(false)} className="rounded-full border border-white/15 px-3 py-1.5 text-xs text-slate-200">Close</button></div><form onSubmit={handleLogin} className="mt-5 grid gap-3 sm:grid-cols-2"><input type="email" required value={authEmail} onChange={(event) => setAuthEmail(event.target.value)} placeholder="Email" className="rounded-xl border border-white/10 bg-[#101316] px-3 py-2.5 text-sm text-white outline-none" /><input type="password" required value={authPassword} onChange={(event) => setAuthPassword(event.target.value)} placeholder="Password" className="rounded-xl border border-white/10 bg-[#101316] px-3 py-2.5 text-sm text-white outline-none" /><button type="submit" disabled={authBusy} className="rounded-full bg-gradient-to-r from-emerald-500 to-cyan-500 px-4 py-3 text-sm font-semibold text-white sm:col-span-2">{authBusy ? "Signing in..." : "Sign in"}</button></form></div>}
 
           {tab === "dashboard" && (
             <>
@@ -935,7 +957,7 @@ export default function Home() {
             </>
           )}
 
-          {tab === "players" && (
+          {tab === "players" && isAuthenticated && (
             <section className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
               <div className="rounded-[26px] border border-[#d9d3d0] bg-[#171a1d] p-5 text-white shadow-[0_16px_30px_rgba(17,24,39,0.12)]">
                 <p className="text-[10px] uppercase tracking-[0.25em] text-slate-400">Add player</p>
@@ -1008,7 +1030,7 @@ export default function Home() {
             </section>
           )}
 
-          {tab === "teams" && (
+          {tab === "teams" && isAuthenticated && (
             <section className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
               <div className="rounded-[26px] border border-[#d9d3d0] bg-[#171a1d] p-5 text-white">
                 <p className="text-[10px] uppercase tracking-[0.25em] text-slate-400">Doubles roster</p>
@@ -1036,7 +1058,7 @@ export default function Home() {
             </section>
           )}
 
-          {tab === "tournaments" && (
+          {tab === "tournaments" && isAuthenticated && (
             <section className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
               <div className="rounded-[26px] border border-[#d9d3d0] bg-[#171a1d] p-5 text-white">
                 <p className="text-[10px] uppercase tracking-[0.25em] text-slate-400">League setup</p>

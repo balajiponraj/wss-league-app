@@ -31,4 +31,28 @@ create policy "WSS teams can be updated" on public.teams for update to anon, aut
 drop policy if exists "WSS tournaments can be updated" on public.tournaments;
 create policy "WSS tournaments can be updated" on public.tournaments for update to anon, authenticated using (true) with check (true);
 
+drop policy if exists "WSS players can be added" on public.players;
+drop policy if exists "WSS players can be added by admins" on public.players;
+create policy "WSS players can be added by admins" on public.players for insert to authenticated with check (true);
+drop policy if exists "WSS players can be updated" on public.players;
+create policy "WSS players can be updated" on public.players for update to authenticated using (true) with check (true);
+drop policy if exists "WSS players can be deleted" on public.players;
+create policy "WSS players can be deleted" on public.players for delete to authenticated using (true);
+
+drop policy if exists "WSS teams can be added" on public.teams;
+drop policy if exists "WSS teams can be added by admins" on public.teams;
+create policy "WSS teams can be added by admins" on public.teams for insert to authenticated with check (true);
+drop policy if exists "WSS teams can be updated" on public.teams;
+create policy "WSS teams can be updated" on public.teams for update to authenticated using (true) with check (true);
+drop policy if exists "WSS teams can be deleted" on public.teams;
+create policy "WSS teams can be deleted" on public.teams for delete to authenticated using (true);
+
+drop policy if exists "WSS tournaments can be added" on public.tournaments;
+drop policy if exists "WSS tournaments can be added by admins" on public.tournaments;
+create policy "WSS tournaments can be added by admins" on public.tournaments for insert to authenticated with check (true);
+drop policy if exists "WSS tournaments can be updated" on public.tournaments;
+create policy "WSS tournaments can be updated" on public.tournaments for update to authenticated using (true) with check (true);
+drop policy if exists "WSS tournaments can be deleted" on public.tournaments;
+create policy "WSS tournaments can be deleted" on public.tournaments for delete to authenticated using (true);
+
 NOTIFY pgrst, 'reload schema';

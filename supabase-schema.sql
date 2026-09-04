@@ -62,6 +62,9 @@ alter table public.tournaments enable row level security;
 
 drop policy if exists "WSS players can be read" on public.players;
 drop policy if exists "WSS players can be added" on public.players;
+drop policy if exists "WSS players can be added by admins" on public.players;
+drop policy if exists "WSS players can be deleted" on public.players;
+drop policy if exists "WSS players can be updated" on public.players;
 drop policy if exists "WSS players can be deleted" on public.players;
 drop policy if exists "WSS matches can be read" on public.matches;
 drop policy if exists "WSS matches can be added" on public.matches;
@@ -69,9 +72,15 @@ drop policy if exists "WSS matches can be updated" on public.matches;
 drop policy if exists "WSS matches can be deleted" on public.matches;
 drop policy if exists "WSS teams can be read" on public.teams;
 drop policy if exists "WSS teams can be added" on public.teams;
+drop policy if exists "WSS teams can be added by admins" on public.teams;
+drop policy if exists "WSS teams can be deleted" on public.teams;
+drop policy if exists "WSS teams can be updated" on public.teams;
 drop policy if exists "WSS teams can be deleted" on public.teams;
 drop policy if exists "WSS tournaments can be read" on public.tournaments;
 drop policy if exists "WSS tournaments can be added" on public.tournaments;
+drop policy if exists "WSS tournaments can be added by admins" on public.tournaments;
+drop policy if exists "WSS tournaments can be deleted" on public.tournaments;
+drop policy if exists "WSS tournaments can be updated" on public.tournaments;
 drop policy if exists "WSS tournaments can be deleted" on public.tournaments;
 drop policy if exists "WSS teams can be updated" on public.teams;
 drop policy if exists "WSS tournaments can be updated" on public.tournaments;
@@ -81,15 +90,16 @@ create policy "WSS players can be read"
   to anon, authenticated
   using (true);
 
-create policy "WSS players can be added"
+create policy "WSS players can be added by admins"
   on public.players for insert
-  to anon, authenticated
+  to authenticated
   with check (true);
 
+create policy "WSS players can be updated"
+  on public.players for update to authenticated using (true) with check (true);
+
 create policy "WSS players can be deleted"
-  on public.players for delete
-  to anon, authenticated
-  using (true);
+  on public.players for delete to authenticated using (true);
 
 create policy "WSS matches can be read"
   on public.matches for select
@@ -117,42 +127,32 @@ create policy "WSS teams can be read"
   to anon, authenticated
   using (true);
 
-create policy "WSS teams can be added"
+create policy "WSS teams can be added by admins"
   on public.teams for insert
-  to anon, authenticated
+  to authenticated
   with check (true);
-
-create policy "WSS teams can be deleted"
-  on public.teams for delete
-  to anon, authenticated
-  using (true);
 
 create policy "WSS teams can be updated"
-  on public.teams for update
-  to anon, authenticated
-  using (true)
-  with check (true);
+  on public.teams for update to authenticated using (true) with check (true);
+
+create policy "WSS teams can be deleted"
+  on public.teams for delete to authenticated using (true);
 
 create policy "WSS tournaments can be read"
   on public.tournaments for select
   to anon, authenticated
   using (true);
 
-create policy "WSS tournaments can be added"
+create policy "WSS tournaments can be added by admins"
   on public.tournaments for insert
-  to anon, authenticated
+  to authenticated
   with check (true);
-
-create policy "WSS tournaments can be deleted"
-  on public.tournaments for delete
-  to anon, authenticated
-  using (true);
 
 create policy "WSS tournaments can be updated"
-  on public.tournaments for update
-  to anon, authenticated
-  using (true)
-  with check (true);
+  on public.tournaments for update to authenticated using (true) with check (true);
+
+create policy "WSS tournaments can be deleted"
+  on public.tournaments for delete to authenticated using (true);
 
 do $$
 begin

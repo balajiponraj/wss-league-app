@@ -61,3 +61,9 @@ To start fresh, open Supabase **SQL Editor**, paste the contents of `clear-wss-d
 If tournament creation says `event_date` is missing, run `supabase-migration-schedule.sql` in the Supabase SQL Editor. This adds the schedule columns without deleting any existing data.
 
 For tournament-specific pairs and score updates, run `supabase-migration-tournament-pairs.sql` in the Supabase SQL Editor. It adds the tournament group/count fields, links pairs to tournaments, and permits updating a saved fixture.
+
+## Admin access
+
+Public visitors can view standings, the dashboard, and playoff results and can update match results. Players and Leagues are admin-only. To create the admin login, open Supabase **Authentication -> Users -> Add user**, enter the administrator email and a password, and create the user. There is intentionally no public signup screen.
+
+Run the latest `supabase-migration-tournament-pairs.sql` after enabling this access model. It keeps player, team, and league mutations restricted to authenticated users while leaving match result updates available publicly.
