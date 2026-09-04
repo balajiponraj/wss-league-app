@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://wss-hub.vercel.app"),
-  title: "WSS Badminton League",
+  title: "Whitby Smash Hub",
   description: "WHITBY SMASH SQUAD badminton league, standings, fixtures, and playoff results.",
   icons: {
     icon: "/wss-logo.png",
@@ -23,7 +23,7 @@ export const metadata: Metadata = {
     apple: "/wss-logo.png",
   },
   openGraph: {
-    title: "WSS Badminton League",
+    title: "Whitby Smash Hub",
     description: "WHITBY SMASH SQUAD badminton league, standings, fixtures, and playoff results.",
     url: "https://wss-hub.vercel.app",
     siteName: "WSS Badminton League",
@@ -32,7 +32,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "WSS Badminton League",
+    title: "Whitby Smash Hub",
     description: "WHITBY SMASH SQUAD badminton league, standings, fixtures, and playoff results.",
     images: ["/wss-logo.png"],
   },

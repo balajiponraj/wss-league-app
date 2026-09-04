@@ -404,8 +404,18 @@ export default function Home() {
 
   const playoffTeams = teamStandings.slice(0, standingsTournament?.format === "external" ? 8 : 4);
 
+  const playoffRoundRobinComplete = useMemo(() => {
+    if (!playoffTournament) return false;
+    const tournamentTeams = teams.filter((team) => team.tournamentId === playoffTournament.id);
+    const expectedFixtures = playoffTournament.format === "internal"
+      ? (tournamentTeams.length * Math.max(tournamentTeams.length - 1, 0)) / 2
+      : tournamentTeams.filter((team) => teamGroup(team) === playoffTournament.group_a).length * tournamentTeams.filter((team) => teamGroup(team) === playoffTournament.group_b).length;
+    const completedFixtures = matches.filter((match) => match.tournamentId === playoffTournament.id && (!match.stage || match.stage === "round_robin") && match.teamAId && match.teamBId).length;
+    return expectedFixtures > 0 && completedFixtures >= expectedFixtures;
+  }, [matches, playoffTournament, teams, playerMap]);
+
   const playoffStandings = useMemo(() => {
-    if (!playoffTournament) return [];
+    if (!playoffTournament || !playoffRoundRobinComplete) return [];
     return teams.filter((team) => team.tournamentId === playoffTournament.id).map((team) => {
       const games = matches.filter((match) => match.tournamentId === playoffTournament.id && (!match.stage || match.stage === "round_robin") && (match.teamAId === team.id || match.teamBId === team.id));
       const wins = games.filter((match) => match.teamAId === team.id ? match.playerAScore > match.playerBScore : match.playerBScore > match.playerAScore).length;
@@ -413,10 +423,12 @@ export default function Home() {
       const pa = games.reduce((sum, match) => sum + (match.teamAId === team.id ? match.playerBScore : match.playerAScore), 0);
       return { team, wins, difference: pf - pa };
     }).sort((a, b) => b.wins - a.wins || b.difference - a.difference);
-  }, [matches, playoffTournament, teams]);
+  }, [matches, playoffRoundRobinComplete, playoffTournament, teams]);
 
   const playoffMatch = (key: string, teamA?: Team, teamB?: Team) => {
-    const saved = matches.find((match) => match.tournamentId === playoffTournament?.id && match.stage && match.bracketKey === key);
+    const saved = playoffRoundRobinComplete
+      ? matches.find((match) => match.tournamentId === playoffTournament?.id && match.stage && match.bracketKey === key)
+      : undefined;
     return { key, teamA, teamB, match: saved, teamAScore: saved?.playerAScore, teamBScore: saved?.playerBScore };
   };
 
@@ -458,7 +470,7 @@ export default function Home() {
         return fixture?.match ? fixture : undefined;
       }).filter((fixture): fixture is NonNullable<typeof fixture> => Boolean(fixture))
     : [];
-  const playoffComplete = Boolean(playoffTournament && playoffResultOrder.every((key) => playoffBracket.columns.flat().some((fixture) => fixture.key === key && fixture.match)));
+  const playoffComplete = Boolean(playoffRoundRobinComplete && playoffTournament && playoffResultOrder.every((key) => playoffBracket.columns.flat().some((fixture) => fixture.key === key && fixture.match)));
 
   const deletablePlayers = players.filter((player) => player.group_name === deletePlayerDraft.group_name);
 
@@ -791,7 +803,7 @@ export default function Home() {
                 <p className="text-[10px] font-semibold uppercase tracking-[0.26em] text-[#61656d]">
                   WSS LEAGUE · WHITBY SMASH SQUAD
                 </p>
-                <h1 className="text-xl font-semibold text-white">WSS Badminton League</h1>
+                <h1 className="text-xl font-semibold text-white">Whitby Smash Hub</h1>
               </div>
             </div>
 
