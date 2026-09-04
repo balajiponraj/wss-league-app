@@ -18,9 +18,9 @@ export const metadata: Metadata = {
   title: "WSS Badminton League",
   description: "WHITBY SMASH SQUAD badminton league, standings, fixtures, and playoff results.",
   icons: {
-    icon: "/wss-shuttlecock-logo.png",
-    shortcut: "/wss-shuttlecock-logo.png",
-    apple: "/wss-shuttlecock-logo.png",
+    icon: "/wss-logo.png",
+    shortcut: "/wss-logo.png",
+    apple: "/wss-logo.png",
   },
   openGraph: {
     title: "WSS Badminton League",
@@ -28,13 +28,13 @@ export const metadata: Metadata = {
     url: "https://wss-hub.vercel.app",
     siteName: "WSS Badminton League",
     type: "website",
-    images: [{ url: "/wss-shuttlecock-logo.png", width: 600, height: 338, alt: "WSS Badminton League shuttlecock" }],
+    images: [{ url: "/wss-logo.png", width: 280, height: 215, alt: "WSS badminton shuttlecock logo" }],
   },
   twitter: {
     card: "summary_large_image",
     title: "WSS Badminton League",
     description: "WHITBY SMASH SQUAD badminton league, standings, fixtures, and playoff results.",
-    images: ["/wss-shuttlecock-logo.png"],
+    images: ["/wss-logo.png"],
   },
 };
 
