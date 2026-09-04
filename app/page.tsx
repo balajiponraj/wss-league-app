@@ -39,7 +39,7 @@ type Tournament = {
   created_at: string;
 };
 
-type TabName = "dashboard" | "players" | "teams" | "tournaments" | "matches";
+type TabName = "dashboard" | "players" | "teams" | "tournaments" | "standings" | "matches";
 
 const STORAGE_KEY = "wss-badminton-db-v1";
 
@@ -97,6 +97,7 @@ export default function Home() {
   });
   const [teamDraft, setTeamDraft] = useState({ name: "", playerAId: "", playerBId: "", group_name: "A" });
   const [tournamentDraft, setTournamentDraft] = useState({ name: "", format: "internal" as "internal" | "external" });
+  const [standingsTournamentId, setStandingsTournamentId] = useState("");
   const [notice, setNotice] = useState("Local storage mode enabled. Connect Supabase for live database storage.");
 
   useEffect(() => {
@@ -242,6 +243,20 @@ export default function Home() {
     const groupB = teams.filter((team) => team.group_name === "B").length;
     return groupA * groupB;
   };
+
+  const standingsTournament = tournaments.find((tournament) => tournament.id === standingsTournamentId) ?? tournaments[0];
+  const teamStandings = useMemo(() => {
+    const tournamentMatches = matches.filter((match) => match.tournamentId === standingsTournament?.id && match.teamAId && match.teamBId);
+    return teams.map((team) => {
+      const teamMatches = tournamentMatches.filter((match) => match.teamAId === team.id || match.teamBId === team.id);
+      const wins = teamMatches.filter((match) => match.winnerId === team.playerAId || match.winnerId === team.playerBId).length;
+      const pointsFor = teamMatches.reduce((total, match) => total + (match.teamAId === team.id ? match.playerAScore : match.playerBScore), 0);
+      const pointsAgainst = teamMatches.reduce((total, match) => total + (match.teamAId === team.id ? match.playerBScore : match.playerAScore), 0);
+      return { team, played: teamMatches.length, wins, pointsFor, pointsAgainst, difference: pointsFor - pointsAgainst };
+    }).sort((a, b) => b.wins - a.wins || b.difference - a.difference || b.pointsFor - a.pointsFor);
+  }, [matches, standingsTournament, teams]);
+
+  const playoffTeams = teamStandings.slice(0, standingsTournament?.format === "external" ? 8 : 4);
 
   const addPlayer = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -409,6 +424,7 @@ export default function Home() {
                 { key: "players", label: "Players" },
                 { key: "teams", label: "Doubles teams" },
                 { key: "tournaments", label: "Leagues" },
+                { key: "standings", label: "Standings" },
                 { key: "matches", label: "Matches" },
               ].map((item) => (
                 <button
@@ -736,6 +752,27 @@ export default function Home() {
                 <h2 className="mt-2 text-2xl font-semibold text-[#181a1d]">Your leagues</h2>
                 <div className="mt-5 space-y-3">{tournaments.map((tournament) => <div key={tournament.id} className="rounded-[20px] border border-[#e4dfdc] bg-white p-4"><div className="flex items-center justify-between gap-3"><p className="font-semibold text-[#17191d]">{tournament.name}</p><span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] uppercase text-emerald-700">{tournament.format}</span></div><p className="mt-2 text-sm text-[#626972]">{tournament.format === "internal" ? "All enrolled teams play one another." : "Teams play the teams in the opposite group."}</p></div>)}</div>
               </div>
+            </section>
+          )}
+
+          {tab === "standings" && (
+            <section className="space-y-6">
+              <div className="rounded-[26px] border border-[#d9d3d0] bg-[#191c20] p-5 text-white">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+                  <div><p className="text-[10px] uppercase tracking-[0.25em] text-slate-400">Competition table</p><h2 className="mt-2 text-2xl font-semibold">Tournament standings</h2></div>
+                  <select value={standingsTournament?.id ?? ""} onChange={(event) => setStandingsTournamentId(event.target.value)} className="rounded-xl border border-white/10 bg-[#101316] px-3 py-2.5 text-sm text-white outline-none"><option value="">Select league</option>{tournaments.map((tournament) => <option key={tournament.id} value={tournament.id}>{tournament.name}</option>)}</select>
+                </div>
+                {!standingsTournament && <p className="mt-5 text-sm text-slate-300">Create a league and record tournament matches to build standings.</p>}
+                {standingsTournament && <p className="mt-4 text-sm text-slate-300">{standingsTournament.format === "internal" ? "Internal league: top 4 qualify for the playoff." : "External league: top 8 qualify for the quarter-finals."} Rankings use wins first, then point difference, then points scored.</p>}
+              </div>
+
+              {standingsTournament && <>
+                <div className="overflow-x-auto rounded-[26px] border border-[#d9d3d0] bg-[#f9f7f5] p-5"><table className="w-full min-w-[650px] text-left text-sm"><thead className="border-b border-[#ded8d4] text-[10px] uppercase tracking-[0.18em] text-[#6a7077]"><tr><th className="px-3 py-3">Rank</th><th className="px-3 py-3">Team</th><th className="px-3 py-3">P</th><th className="px-3 py-3">W</th><th className="px-3 py-3">PF</th><th className="px-3 py-3">PA</th><th className="px-3 py-3">Diff</th></tr></thead><tbody>{teamStandings.map((entry, index) => <tr key={entry.team.id} className="border-b border-[#ebe6e2] last:border-0"><td className="px-3 py-3 font-semibold text-[#59616a]">{index + 1}</td><td className="px-3 py-3 font-semibold text-[#17191d]">{teamLabel(entry.team)}<span className="ml-2 text-xs font-normal text-[#707780]">Group {entry.team.group_name}</span></td><td className="px-3 py-3 text-[#30343a]">{entry.played}</td><td className="px-3 py-3 font-bold text-[#17191d]">{entry.wins}</td><td className="px-3 py-3 text-[#30343a]">{entry.pointsFor}</td><td className="px-3 py-3 text-[#30343a]">{entry.pointsAgainst}</td><td className={`px-3 py-3 font-semibold ${entry.difference >= 0 ? "text-emerald-700" : "text-rose-700"}`}>{entry.difference > 0 ? "+" : ""}{entry.difference}</td></tr>)}</tbody></table></div>
+
+                <div className="rounded-[26px] border border-[#d9d3d0] bg-[#171a1d] p-5 text-white"><p className="text-[10px] uppercase tracking-[0.25em] text-slate-400">Knockout format</p><h2 className="mt-2 text-2xl font-semibold">{standingsTournament.format === "internal" ? "Internal playoff" : "External knockout"}</h2><div className="mt-5 grid gap-4 md:grid-cols-3">
+                  {standingsTournament.format === "internal" ? <><div className="rounded-2xl border border-white/10 bg-white/5 p-4"><p className="text-xs uppercase tracking-[0.16em] text-emerald-300">Qualifier 1</p><p className="mt-3 font-semibold">1. {playoffTeams[0] ? teamLabel(playoffTeams[0].team) : "TBD"} vs 2. {playoffTeams[1] ? teamLabel(playoffTeams[1].team) : "TBD"}</p><p className="mt-3 text-sm text-slate-300">Winner goes directly to the final.</p></div><div className="rounded-2xl border border-white/10 bg-white/5 p-4"><p className="text-xs uppercase tracking-[0.16em] text-amber-300">Eliminator</p><p className="mt-3 font-semibold">3. {playoffTeams[2] ? teamLabel(playoffTeams[2].team) : "TBD"} vs 4. {playoffTeams[3] ? teamLabel(playoffTeams[3].team) : "TBD"}</p><p className="mt-3 text-sm text-slate-300">Winner advances to Qualifier 2.</p></div><div className="rounded-2xl border border-white/10 bg-white/5 p-4"><p className="text-xs uppercase tracking-[0.16em] text-sky-300">Final path</p><p className="mt-3 font-semibold">Qualifier 2 vs Qualifier 1 winner</p><p className="mt-3 text-sm text-slate-300">Qualifier 2 winner reaches the final. Bronze goes to the Qualifier 2 loser.</p></div></> : <><div className="rounded-2xl border border-white/10 bg-white/5 p-4"><p className="text-xs uppercase tracking-[0.16em] text-emerald-300">Quarter-finals</p><p className="mt-3 font-semibold">1 vs 8<br />2 vs 7<br />3 vs 6<br />4 vs 5</p></div><div className="rounded-2xl border border-white/10 bg-white/5 p-4"><p className="text-xs uppercase tracking-[0.16em] text-amber-300">Semi-finals</p><p className="mt-3 font-semibold">Winner (1/8) vs Winner (2/7)<br /><br />Winner (3/6) vs Winner (4/5)</p></div><div className="rounded-2xl border border-white/10 bg-white/5 p-4"><p className="text-xs uppercase tracking-[0.16em] text-sky-300">Final & bronze</p><p className="mt-3 font-semibold">Semi-final winners play final</p><p className="mt-3 text-sm text-slate-300">Final winner: gold. Final loser: silver. Semi-final losers play the bronze match.</p></div></>}
+                </div></div>
+              </>}
             </section>
           )}
 
