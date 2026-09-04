@@ -802,8 +802,8 @@ export default function Home() {
         <header className="mb-6 rounded-[28px] border border-[#d7a91d]/40 bg-[#0d2b4a] px-5 py-4 shadow-[0_18px_40px_rgba(0,0,0,0.24)] backdrop-blur-sm">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-full bg-[#071a2d] text-lg font-bold text-[#071a2d]">
-                <img src="/wss-feather-mark.svg" alt="WSS League feather" className="h-full w-full object-cover" />
+              <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#071a2d] text-lg font-bold text-[#071a2d] sm:h-[72px] sm:w-[72px]">
+                <img src="/wss-feather-mark.svg" alt="WSS League badminton shuttlecock" className="h-full w-full object-cover" />
               </div>
               <div>
                 <p className="text-[10px] font-semibold uppercase tracking-[0.26em] text-[#61656d]">
