@@ -387,7 +387,7 @@ export default function Home() {
   };
 
   const standingsTournament = tournaments.find((tournament) => tournament.id === standingsTournamentId) ?? tournaments[0];
-  const playoffTournament = tournaments.find((tournament) => tournament.id === playoffTournamentId) ?? tournaments[0];
+  const playoffTournament = tournaments.find((tournament) => tournament.id === playoffTournamentId) ?? selectedTournament;
   const teamStandings = useMemo(() => {
     const tournamentMatches = matches.filter((match) => match.tournamentId === standingsTournament?.id && match.teamAId && match.teamBId && (!match.stage || match.stage === "round_robin"));
     return teams.filter((team) => team.tournamentId === standingsTournament?.id).map((team) => {
