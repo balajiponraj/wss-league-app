@@ -606,9 +606,8 @@ export default function Home() {
         return;
       }
 
-      const { data } = await supabase.from("matches").select("*");
-      setMatches((data ?? [record]) as MatchRecord[]);
-      setNotice("Match result saved to Supabase.");
+      setMatches((current) => existingMatch ? current.map((match) => match.id === record.id ? record : match) : [record, ...current]);
+      setNotice(existingMatch ? "Match result updated in Supabase." : "Match result saved to Supabase.");
     } else {
       setMatches((current) => existingMatch ? current.map((match) => match.id === record.id ? record : match) : [record, ...current]);
       setNotice(existingMatch ? "Match result updated locally." : "Match result saved to local database.");
@@ -616,6 +615,16 @@ export default function Home() {
 
     setLiveScore({ playerA: "", playerB: "" });
     setEditingMatchId(null);
+  };
+
+  const selectTournament = (tournamentId: string) => {
+    const tournament = tournaments.find((item) => item.id === tournamentId);
+    const availableTeams = teams.filter((team) => team.tournamentId === tournamentId);
+    const firstTeam = availableTeams.find((team) => !tournament || teamGroup(team) === tournament.group_a);
+    const secondTeam = availableTeams.find((team) => team.id !== firstTeam?.id && (!tournament || teamGroup(team) === (tournament.format === "external" ? tournament.group_b : tournament.group_a)));
+    setMatchDraft((current) => ({ ...current, tournamentId, teamAId: firstTeam?.id ?? "", teamBId: secondTeam?.id ?? "" }));
+    setFixtureTeamFilter("");
+    setLiveScore({ playerA: "", playerB: "" });
   };
 
   return (
@@ -687,7 +696,7 @@ export default function Home() {
                     </div>
                   </div>
 
-                  <select value={matchDraft.tournamentId} onChange={(event) => setMatchDraft((current) => ({ ...current, tournamentId: event.target.value, teamBId: "" }))} className="mb-4 w-full rounded-xl border border-white/10 bg-[#121417] px-3 py-2 text-sm text-white outline-none">
+                  <select value={matchDraft.tournamentId} onChange={(event) => selectTournament(event.target.value)} className="mb-4 w-full rounded-xl border border-white/10 bg-[#121417] px-3 py-2 text-sm text-white outline-none">
                     <option value="">Select tournament</option>
                     {tournaments.map((tournament) => <option key={tournament.id} value={tournament.id}>{tournament.name}</option>)}
                   </select>
@@ -963,7 +972,7 @@ export default function Home() {
                 <div className="mt-5 space-y-4">
                   <div>
                     <label className="mb-2 block text-xs uppercase tracking-[0.2em] text-slate-400">League</label>
-                    <select value={matchDraft.tournamentId} onChange={(event) => setMatchDraft((current) => ({ ...current, tournamentId: event.target.value, teamBId: "" }))} className="w-full rounded-xl border border-white/10 bg-[#101316] px-3 py-2.5 text-sm text-white outline-none">
+                    <select value={matchDraft.tournamentId} onChange={(event) => selectTournament(event.target.value)} className="w-full rounded-xl border border-white/10 bg-[#101316] px-3 py-2.5 text-sm text-white outline-none">
                       <option value="">Friendly / no league</option>
                       {tournaments.map((tournament) => <option key={tournament.id} value={tournament.id}>{tournament.name} ({tournament.format})</option>)}
                     </select>
