@@ -142,6 +142,8 @@ export default function Home() {
   const [deletePlayerDraft, setDeletePlayerDraft] = useState({ name: "", group_name: "WSS" });
   const [deleteTournamentId, setDeleteTournamentId] = useState("");
   const [editingTournamentId, setEditingTournamentId] = useState<string | null>(null);
+  const [editingMatchId, setEditingMatchId] = useState<string | null>(null);
+  const [fixtureTeamFilter, setFixtureTeamFilter] = useState("");
   const [standingsTournamentId, setStandingsTournamentId] = useState("");
   const [notice, setNotice] = useState("Local storage mode enabled. Connect Supabase for live database storage.");
 
@@ -299,14 +301,7 @@ export default function Home() {
   const eligibleTeamA = useMemo(() => tournamentTeams.filter((team) => teamGroup(team) === team1Group), [tournamentTeams, team1Group, playerMap]);
   const eligibleTeamB = useMemo(() => tournamentTeams.filter((team) => team.id !== matchDraft.teamAId && teamGroup(team) === team2Group), [tournamentTeams, matchDraft.teamAId, team2Group, playerMap]);
 
-  useEffect(() => {
-    if (!selectedTournament) return;
-    setMatchDraft((current) => {
-      const nextTeamA = eligibleTeamA.some((team) => team.id === current.teamAId) ? current.teamAId : eligibleTeamA[0]?.id ?? "";
-      const nextTeamB = eligibleTeamB.some((team) => team.id === current.teamBId) ? current.teamBId : eligibleTeamB.find((team) => team.id !== nextTeamA)?.id ?? "";
-      return { ...current, teamAId: nextTeamA, teamBId: nextTeamB };
-    });
-  }, [matchDraft.tournamentId, selectedTournament?.id, teams]);
+  const filteredFixtures = tournamentFixtures.filter((fixture) => !fixtureTeamFilter || fixture.teamA.id === fixtureTeamFilter || fixture.teamB.id === fixtureTeamFilter);
 
   const fixtureCount = (tournament: Tournament) => {
     const tournamentTeams = teams.filter((team) => team.tournamentId === tournament.id);
@@ -430,6 +425,7 @@ export default function Home() {
 
   const editMatch = (fixture: { teamA: Team; teamB: Team; match?: MatchRecord; teamAScore?: number; teamBScore?: number }) => {
     if (!fixture.match) return;
+    setEditingMatchId(fixture.match.id);
     setMatchDraft((current) => ({ ...current, tournamentId: fixture.match?.tournamentId ?? current.tournamentId, teamAId: fixture.teamA.id, teamBId: fixture.teamB.id }));
     setLiveScore({ playerA: String(fixture.teamAScore ?? ""), playerB: String(fixture.teamBScore ?? "") });
     setNotice("Result loaded. Edit the scores and save the updated result.");
@@ -585,7 +581,7 @@ export default function Home() {
 
     const winnerId = playerAScore > playerBScore ? teamA.playerAId : teamB.playerAId;
 
-    const existingMatch = matches.find((match) => match.tournamentId === matchDraft.tournamentId && ((match.teamAId === teamA.id && match.teamBId === teamB.id) || (match.teamAId === teamB.id && match.teamBId === teamA.id)));
+    const existingMatch = (editingMatchId ? matches.find((match) => match.id === editingMatchId) : undefined) ?? matches.find((match) => match.tournamentId === matchDraft.tournamentId && ((match.teamAId === teamA.id && match.teamBId === teamB.id) || (match.teamAId === teamB.id && match.teamBId === teamA.id)));
     const record: MatchRecord = {
       id: existingMatch?.id ?? createId(),
       playerAId: teamA.playerAId,
@@ -619,6 +615,7 @@ export default function Home() {
     }
 
     setLiveScore({ playerA: "", playerB: "" });
+    setEditingMatchId(null);
   };
 
   return (
@@ -790,9 +787,12 @@ export default function Home() {
                   <div><p className="text-[10px] uppercase tracking-[0.25em] text-[#696f77]">Round robin fixtures</p><h2 className="mt-1 text-2xl font-semibold text-[#181a1d]">{selectedTournament?.name ?? "Select a tournament"}</h2></div>
                   <div className="flex items-center gap-3"><div className="text-right"><p className="text-sm font-semibold text-[#30343a]">{tournamentFixtures.length} total</p><p className="text-xs uppercase tracking-[0.14em] text-emerald-700">{tournamentFixtures.filter((fixture) => fixture.match).length} completed</p></div><button type="button" onClick={() => void clearResults()} className="rounded-full border border-rose-200 px-3 py-1.5 text-xs font-semibold text-rose-700">Clear results</button></div>
                 </div>
+                <div className="mt-5">
+                  <select value={fixtureTeamFilter} onChange={(event) => setFixtureTeamFilter(event.target.value)} className="w-full rounded-xl border border-[#ded8d4] bg-white px-3 py-2.5 text-sm text-[#17191d] outline-none"><option value="">Select a team to view its results</option>{tournamentTeams.map((team) => <option key={team.id} value={team.id}>{teamLabel(team)}</option>)}</select>
+                </div>
                 <div className="mt-5 grid gap-3 md:grid-cols-2">
-                  {tournamentFixtures.map((fixture) => <div key={`${fixture.teamA.id}-${fixture.teamB.id}`} className="rounded-[18px] border border-[#e4dfdc] bg-white p-4"><div className="flex items-center justify-between gap-3"><p className="font-semibold text-[#17191d]">{teamLabel(fixture.teamA)} <span className="text-[#8a9097]">vs</span> {teamLabel(fixture.teamB)}</p><span className={`rounded-full px-2 py-1 text-[10px] uppercase tracking-[0.14em] ${fixture.match ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>{fixture.match ? "Completed" : "Pending"}</span></div><p className="mt-3 text-sm text-[#626972]">{fixture.match ? `${fixture.teamAScore} : ${fixture.teamBScore}` : "No score yet"}</p>{fixture.match && <button type="button" onClick={() => editMatch(fixture)} className="mt-3 rounded-full border border-[#cdd8f7] px-3 py-1.5 text-xs font-semibold text-[#3949ab]">Edit result</button>}</div>)}
-                  {!tournamentFixtures.length && <p className="text-sm text-[#626972]">Select a tournament with saved pairs to see its fixtures.</p>}
+                  {filteredFixtures.map((fixture) => <div key={`${fixture.teamA.id}-${fixture.teamB.id}`} className="rounded-[18px] border border-[#e4dfdc] bg-white p-4"><div className="flex items-center justify-between gap-3"><p className="font-semibold text-[#17191d]">{teamLabel(fixture.teamA)} <span className="text-[#8a9097]">vs</span> {teamLabel(fixture.teamB)}</p><span className={`rounded-full px-2 py-1 text-[10px] uppercase tracking-[0.14em] ${fixture.match ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>{fixture.match ? "Completed" : "Pending"}</span></div><p className="mt-3 text-sm text-[#626972]">{fixture.match ? `${fixture.teamAScore} : ${fixture.teamBScore}` : "No score yet"}</p>{fixture.match && <button type="button" onClick={() => editMatch(fixture)} className="mt-3 rounded-full border border-[#cdd8f7] px-3 py-1.5 text-xs font-semibold text-[#3949ab]">Edit result</button>}</div>)}
+                  {!filteredFixtures.length && <p className="text-sm text-[#626972]">Select a team to see its results.</p>}
                 </div>
               </section>
             </>
