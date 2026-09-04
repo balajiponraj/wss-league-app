@@ -276,6 +276,9 @@ export default function Home() {
     return playerGroup && groupOptions.includes(playerGroup) ? playerGroup : team.group_name;
   };
 
+  const teamBelongsToGroup = (team: Team, group: string | undefined) =>
+    Boolean(group) && (team.group_name === group || playerMap[team.playerAId]?.group_name === group || playerMap[team.playerBId]?.group_name === group);
+
   const selectedTournament = tournaments.find((tournament) => tournament.id === matchDraft.tournamentId);
   const tournamentTeams = teams.filter((team) => team.tournamentId === selectedTournament?.id);
   const team1Group = selectedTournament?.group_a;
@@ -298,10 +301,12 @@ export default function Home() {
     }));
     return fixtures;
   }, [matches, selectedTournament, teams]);
-  const eligibleTeamA = useMemo(() => tournamentTeams.filter((team) => teamGroup(team) === team1Group), [tournamentTeams, team1Group, playerMap]);
-  const eligibleTeamB = useMemo(() => tournamentTeams.filter((team) => team.id !== matchDraft.teamAId && teamGroup(team) === team2Group), [tournamentTeams, matchDraft.teamAId, team2Group, playerMap]);
+  const eligibleTeamA = useMemo(() => tournamentTeams.filter((team) => teamBelongsToGroup(team, team1Group)), [tournamentTeams, team1Group, playerMap]);
+  const eligibleTeamB = useMemo(() => tournamentTeams.filter((team) => team.id !== matchDraft.teamAId && teamBelongsToGroup(team, team2Group)), [tournamentTeams, matchDraft.teamAId, team2Group, playerMap]);
 
-  const filteredFixtures = tournamentFixtures.filter((fixture) => !fixtureTeamFilter || fixture.teamA.id === fixtureTeamFilter || fixture.teamB.id === fixtureTeamFilter);
+  const filteredFixtures = fixtureTeamFilter
+    ? tournamentFixtures.filter((fixture) => fixture.teamA.id === fixtureTeamFilter || fixture.teamB.id === fixtureTeamFilter)
+    : [];
 
   const fixtureCount = (tournament: Tournament) => {
     const tournamentTeams = teams.filter((team) => team.tournamentId === tournament.id);
@@ -567,7 +572,10 @@ export default function Home() {
   const saveMatch = async () => {
     const teamA = teamMap[matchDraft.teamAId];
     const teamB = teamMap[matchDraft.teamBId];
-    if (!selectedTournament || !teamA || !teamB || teamA.id === teamB.id || !eligibleTeamA.some((team) => team.id === teamA.id) || !eligibleTeamB.some((team) => team.id === teamB.id)) {
+    const teamAIsValid = Boolean(selectedTournament && teamA?.tournamentId === selectedTournament.id && teamBelongsToGroup(teamA, selectedTournament.group_a));
+    const teamBGroup = selectedTournament?.format === "external" ? selectedTournament.group_b : selectedTournament?.group_a;
+    const teamBIsValid = Boolean(selectedTournament && teamB?.tournamentId === selectedTournament.id && teamBelongsToGroup(teamB, teamBGroup));
+    if (!selectedTournament || !teamA || !teamB || teamA.id === teamB.id || !teamAIsValid || !teamBIsValid) {
       setNotice("Choose one valid team from each side of the selected tournament.");
       return;
     }
