@@ -995,7 +995,7 @@ export default function Home() {
                   <button
                     type="button"
                     onClick={saveMatch}
-                    className="mt-5 w-full rounded-full bg-gradient-to-r from-emerald-500 to-sky-500 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-emerald-500/20"
+                    className="dashboard-save-result mt-5 w-full rounded-full px-4 py-3 text-sm font-semibold"
                   >
                     Save match result
                   </button>

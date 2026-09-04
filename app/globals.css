@@ -172,6 +172,14 @@ main table thead {
   box-shadow: 0 10px 24px rgba(183, 143, 41, 0.3) !important;
 }
 
+.dashboard-save-result {
+  background: linear-gradient(100deg, #a87818 0%, #e9bf45 42%, #fff0a6 53%, #c28e20 100%) !important;
+  color: #31230b !important;
+  border: 1px solid rgba(118, 82, 12, 0.42);
+  box-shadow: 0 9px 15px rgba(93, 67, 17, 0.28), inset 0 1px rgba(255, 255, 255, 0.58);
+  text-shadow: 0 1px rgba(255, 240, 166, 0.55);
+}
+
 .dashboard-leaderboard {
   background:
     radial-gradient(circle at 80% 8%, rgba(255, 219, 122, 0.28), transparent 23%),
@@ -184,6 +192,48 @@ main table thead {
   color: #17263a !important;
   border: 2px solid #c99418;
   box-shadow: 0 3px 8px rgba(111, 83, 22, 0.2);
+}
+
+.dashboard-leaderboard .rank-medal {
+  flex-shrink: 0;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+}
+
+.dashboard-leaderboard .rank-medal-1 {
+  width: 48px;
+  height: 54px;
+  border-radius: 13px 13px 18px 18px;
+  clip-path: polygon(50% 0%, 92% 11%, 100% 69%, 50% 100%, 0% 69%, 8% 11%);
+  font-size: 17px;
+}
+
+.dashboard-leaderboard .rank-medal-2 {
+  width: 45px;
+  height: 45px;
+  border-radius: 50%;
+  font-size: 16px;
+}
+
+.dashboard-leaderboard .rank-medal-3 {
+  width: 45px;
+  height: 45px;
+  border-radius: 11px;
+  clip-path: polygon(50% 0%, 90% 18%, 100% 66%, 70% 100%, 30% 100%, 0% 66%, 10% 18%);
+  font-size: 16px;
+}
+
+.dashboard-leaderboard .rank-medal-4,
+.dashboard-leaderboard .rank-medal-5,
+.dashboard-leaderboard .rank-medal-6,
+.dashboard-leaderboard .rank-medal-7,
+.dashboard-leaderboard .rank-medal-8 {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: linear-gradient(145deg, #fffdf4, #d8d1c0) !important;
+  color: #17263a !important;
+  border: 2px solid #b89543;
 }
 
 .dashboard-leaderboard .rank-medal-1 {
