@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { hasSupabaseConfig, supabase } from "@/lib/supabase";
 
 type Player = {
@@ -147,6 +147,20 @@ export default function Home() {
   const [fixtureTeamFilter, setFixtureTeamFilter] = useState("");
   const [standingsTournamentId, setStandingsTournamentId] = useState("");
   const [notice, setNotice] = useState("Local storage mode enabled. Connect Supabase for live database storage.");
+
+  const refreshDatabase = useCallback(async () => {
+    if (!supabase) return;
+    const [{ data: nextPlayers }, { data: nextMatches }, { data: nextTeams }, { data: nextTournaments }] = await Promise.all([
+      supabase.from("players").select("*"),
+      supabase.from("matches").select("*"),
+      supabase.from("teams").select("*"),
+      supabase.from("tournaments").select("*"),
+    ]);
+    setPlayers((nextPlayers ?? []) as Player[]);
+    setMatches((nextMatches ?? []) as MatchRecord[]);
+    setTeams((nextTeams ?? []) as Team[]);
+    setTournaments((nextTournaments ?? []) as Tournament[]);
+  }, []);
 
   useEffect(() => {
     const loadLocalData = () => {
@@ -375,8 +389,7 @@ export default function Home() {
       }
 
       setNotice(`${trimmedName} was added to Supabase.`);
-      const { data } = await supabase.from("players").select("*");
-      setPlayers(data ?? [createdPlayer]);
+      await refreshDatabase();
     } else {
       setPlayers((current) => [...current, createdPlayer]);
       setNotice(`${trimmedName} was added to the player database.`);
@@ -404,6 +417,10 @@ export default function Home() {
       }
       const { error } = await supabase.from("players").delete().eq("id", target.id);
       if (error) { setNotice(`Player delete failed: ${error.message}`); return; }
+      await refreshDatabase();
+      setDeletePlayerDraft({ name: "", group_name: "WSS" });
+      setNotice(`${target.name} from ${target.group_name} was deleted.`);
+      return;
     }
     setPlayers((current) => current.filter((player) => player.id !== target.id));
     setTeams((current) => current.filter((team) => !targetTeamIds.includes(team.id)));
@@ -421,6 +438,9 @@ export default function Home() {
       if (teamError) { setNotice(`League delete failed: ${teamError.message}`); return; }
       const { error } = await supabase.from("tournaments").delete().eq("id", tournament.id);
       if (error) { setNotice(`League delete failed: ${error.message}`); return; }
+      await refreshDatabase();
+      setNotice(`${tournament.name} was deleted.`);
+      return;
     }
     setTournaments((current) => current.filter((item) => item.id !== tournament.id));
     setTeams((current) => current.filter((team) => !tournamentTeamIds.includes(team.id)));
@@ -453,6 +473,10 @@ export default function Home() {
         setNotice(`Could not clear results: ${error.message}`);
         return;
       }
+      await refreshDatabase();
+      setLiveScore({ playerA: "", playerB: "" });
+      setNotice("All match results were cleared.");
+      return;
     }
     setMatches([]);
     setLiveScore({ playerA: "", playerB: "" });
@@ -482,7 +506,7 @@ export default function Home() {
         setNotice(`Team save failed: ${error.message}`);
         return;
       }
-      setTeams((current) => [...current, createdTeam]);
+      await refreshDatabase();
       setNotice(`${createdTeam.name} was saved to Supabase.`);
     } else {
       setTeams((current) => [...current, createdTeam]);
@@ -569,8 +593,12 @@ export default function Home() {
         if (teamsError) { setNotice(`Pair save failed: ${teamsError.message}`); return; }
       }
     }
-    setTournaments((current) => editingTournamentId ? current.map((item) => item.id === editingTournamentId ? createdTournament : item) : [...current, createdTournament]);
-    setTeams((current) => editingTournamentId ? current.filter((team) => team.tournamentId !== editingTournamentId || matches.some((match) => match.teamAId === team.id || match.teamBId === team.id)).map((team) => { const replacement = createdTeams.find((item) => item.name === team.name); return replacement ? { ...replacement, id: team.id } : team; }) : [...current, ...createdTeams]);
+    if (!hasSupabaseConfig || !supabase) {
+      setTournaments((current) => editingTournamentId ? current.map((item) => item.id === editingTournamentId ? createdTournament : item) : [...current, createdTournament]);
+      setTeams((current) => editingTournamentId ? current.filter((team) => team.tournamentId !== editingTournamentId || matches.some((match) => match.teamAId === team.id || match.teamBId === team.id)).map((team) => { const replacement = createdTeams.find((item) => item.name === team.name); return replacement ? { ...replacement, id: team.id } : team; }) : [...current, ...createdTeams]);
+    } else {
+      await refreshDatabase();
+    }
     setMatchDraft((current) => ({ ...current, tournamentId: createdTournament.id }));
     setTournamentDraft({ name: "", format: "internal", event_date: "", location: "", group_a: "WSS", group_b: "DCSC", teams_per_group: 7 });
     setPairNames([]);
@@ -624,7 +652,7 @@ export default function Home() {
       }
 
       const savedRecord = (result.data ?? record) as MatchRecord;
-      setMatches((current) => existingMatch ? current.map((match) => match.id === record.id ? savedRecord : match) : [savedRecord, ...current]);
+      await refreshDatabase();
       setNotice(`${teamLabel(teamA)} ${existingMatch ? "result updated" : "defeated"} ${teamLabel(teamB)} (${playerAScore} : ${playerBScore}).`);
     } else {
       setMatches((current) => existingMatch ? current.map((match) => match.id === record.id ? record : match) : [record, ...current]);
