@@ -1,0 +1,8 @@
+<svg width="96" height="96" viewBox="0 0 96 96" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="96" height="96" rx="18" fill="#071A2D"/>
+  <path d="M48 10C39 25 35 39 37 56C39 69 44 78 48 85C52 78 57 69 59 56C61 39 57 25 48 10Z" fill="#FFF8DF"/>
+  <path d="M48 15V83" stroke="#D59E1B" stroke-width="3"/>
+  <path d="M43 25L32 16M42 34L28 27M41 44L25 39M42 54L27 52M44 64L32 65M53 25L64 16M54 34L68 27M55 44L71 39M54 54L69 52M52 64L64 65" stroke="#D59E1B" stroke-width="3" stroke-linecap="round"/>
+  <path d="M40 70C43 75 46 78 48 82C50 78 53 75 56 70" stroke="#071A2D" stroke-width="6" stroke-linecap="round"/>
+  <text x="48" y="92" text-anchor="middle" fill="#F7C62F" font-family="Arial, sans-serif" font-size="7" font-weight="700" letter-spacing="1.2">WSS</text>
+</svg>

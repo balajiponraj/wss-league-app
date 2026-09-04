@@ -803,7 +803,7 @@ export default function Home() {
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex items-center gap-3">
               <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-full bg-[#071a2d] text-lg font-bold text-[#071a2d]">
-                <img src="/wss-league-mark.svg" alt="WSS League" className="h-full w-full object-cover" />
+                <img src="/wss-feather-mark.svg" alt="WSS League feather" className="h-full w-full object-cover" />
               </div>
               <div>
                 <p className="text-[10px] font-semibold uppercase tracking-[0.26em] text-[#61656d]">
@@ -837,15 +837,6 @@ export default function Home() {
             </nav>
           </div>
         </header>
-
-        <section className="relative mb-6 overflow-hidden rounded-[26px] border border-[#d7a91d]/40 bg-[#071a2d] shadow-[0_20px_45px_rgba(0,0,0,0.26)]">
-          <img src="/wss-flying-shuttle.svg" alt="Flying shuttlecock" className="absolute inset-0 h-full w-full object-cover opacity-90" />
-          <div className="relative z-10 min-h-[180px] px-6 py-8 sm:min-h-[220px] sm:px-10 sm:py-12">
-            <p className="text-xs font-semibold uppercase tracking-[0.35em] text-[#f7c62f]">Two clubs, one passion</p>
-            <h2 className="mt-3 max-w-lg text-3xl font-extrabold tracking-tight text-white sm:text-5xl">WSS LEAGUE</h2>
-            <p className="mt-2 text-sm font-medium text-[#d9e3ef] sm:text-base">Built for champions. Designed for passion.</p>
-          </div>
-        </section>
 
         <main data-playoff-complete={playoffComplete ? "true" : "false"} className="space-y-6">
           {notice && notice !== "Connected to Supabase. Live sync is active." && <p className="sr-only" aria-live="polite">{notice}</p>}
