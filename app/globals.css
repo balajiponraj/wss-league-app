@@ -40,6 +40,18 @@ body {
   color: #17263a;
 }
 
+body > div.min-h-screen {
+  background:
+    radial-gradient(circle at 76% 16%, rgba(255, 218, 126, 0.32), transparent 21%),
+    radial-gradient(circle at 8% 82%, rgba(255, 255, 255, 0.92), transparent 30%),
+    linear-gradient(135deg, #e5dfd1 0%, #f7f4ec 48%, #d8d0c0 100%) !important;
+  color: #17263a !important;
+}
+
+body > div.min-h-screen > div {
+  position: relative;
+}
+
 h1,
 h2,
 h3 {
