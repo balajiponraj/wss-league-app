@@ -175,7 +175,7 @@ export default function Home() {
     setMatches((nextMatches ?? []) as MatchRecord[]);
     setTeams((nextTeams ?? []) as Team[]);
     setTournaments((nextTournaments ?? []) as Tournament[]);
-    setGroups(nextGroups?.length ? (nextGroups as Group[]) : groups);
+    if (nextGroups?.length) setGroups(nextGroups as Group[]);
   }, []);
 
   useEffect(() => {
@@ -266,7 +266,7 @@ export default function Home() {
       const { data: tournamentsData, error: tournamentsError } = await client.from("tournaments").select("*");
       const { data: groupsData, error: groupsError } = await client.from("groups").select("*").order("name");
 
-      if (playersError || matchesError || teamsError || tournamentsError || groupsError) {
+      if (playersError || matchesError || teamsError || tournamentsError) {
         setNotice("Supabase connection is set, but tables are not ready yet.");
         loadLocalData();
         return;
@@ -280,7 +280,7 @@ export default function Home() {
       setMatches(nextMatches);
       setTeams(nextTeams);
       setTournaments(nextTournaments);
-      setGroups(groupsData?.length ? (groupsData as Group[]) : groups);
+      if (groupsData?.length) setGroups(groupsData as Group[]);
       setTeamDraft((current) => ({ ...current, playerAId: current.playerAId || nextPlayers[0]?.id || "", playerBId: current.playerBId || nextPlayers[1]?.id || "" }));
       setMatchDraft((current) => ({ ...current, teamAId: current.teamAId || nextTeams[0]?.id || "", teamBId: current.teamBId || nextTeams[1]?.id || "", tournamentId: current.tournamentId || nextTournaments[0]?.id || "" }));
       setNotice("Connected to Supabase. Live sync is active.");
