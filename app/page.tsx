@@ -605,19 +605,20 @@ export default function Home() {
 
     if (hasSupabaseConfig && supabase) {
       const result = existingMatch
-        ? await supabase.from("matches").update(record).eq("id", existingMatch.id)
-        : await supabase.from("matches").insert([record]);
+        ? await supabase.from("matches").update(record).eq("id", existingMatch.id).select().single()
+        : await supabase.from("matches").insert([record]).select().single();
 
       if (result.error) {
         setNotice(`Supabase match save failed: ${result.error.message}`);
         return;
       }
 
-      setMatches((current) => existingMatch ? current.map((match) => match.id === record.id ? record : match) : [record, ...current]);
-      setNotice(existingMatch ? "Match result updated in Supabase." : "Match result saved to Supabase.");
+      const savedRecord = (result.data ?? record) as MatchRecord;
+      setMatches((current) => existingMatch ? current.map((match) => match.id === record.id ? savedRecord : match) : [savedRecord, ...current]);
+      setNotice(`${teamLabel(teamA)} ${existingMatch ? "result updated" : "defeated"} ${teamLabel(teamB)} (${playerAScore} : ${playerBScore}).`);
     } else {
       setMatches((current) => existingMatch ? current.map((match) => match.id === record.id ? record : match) : [record, ...current]);
-      setNotice(existingMatch ? "Match result updated locally." : "Match result saved to local database.");
+      setNotice(`${teamLabel(teamA)} ${existingMatch ? "result updated" : "defeated"} ${teamLabel(teamB)} (${playerAScore} : ${playerBScore}).`);
     }
 
     setLiveScore({ playerA: "", playerB: "" });
