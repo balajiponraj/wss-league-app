@@ -558,6 +558,23 @@ export default function Home() {
     setNotice(`${tournament.name} was deleted.`);
   };
 
+  const clearTournamentResults = async (tournament: Tournament) => {
+    if (!window.confirm(`Clear all results for ${tournament.name}? Other leagues will not be affected.`)) return;
+    if (hasSupabaseConfig && supabase) {
+      const { error } = await supabase.from("matches").delete().eq("tournamentId", tournament.id);
+      if (error) {
+        setNotice(`Could not clear ${tournament.name}: ${error.message}`);
+        return;
+      }
+      await refreshDatabase();
+    } else {
+      setMatches((current) => current.filter((match) => match.tournamentId !== tournament.id));
+    }
+    setLiveScore({ playerA: "", playerB: "" });
+    setEditingMatchId(null);
+    setNotice(`All results for ${tournament.name} were cleared.`);
+  };
+
   const editMatch = (fixture: { teamA: Team; teamB: Team; match?: MatchRecord; teamAScore?: number; teamBScore?: number }) => {
     if (!fixture.match) return;
     setEditingMatchId(fixture.match.id);
@@ -1098,7 +1115,7 @@ export default function Home() {
               <div className="rounded-[26px] border border-[#d9d3d0] bg-[#f9f7f5] p-5">
                 <p className="text-[10px] uppercase tracking-[0.25em] text-[#696f77]">Competition calendar</p>
                 <h2 className="mt-2 text-2xl font-semibold text-[#181a1d]">Your leagues</h2>
-                <div className="mt-5 space-y-3">{tournaments.map((tournament) => <div key={tournament.id} className="rounded-[20px] border border-[#e4dfdc] bg-white p-4"><div className="flex items-center justify-between gap-3"><p className="font-semibold text-[#17191d]">{tournament.name}</p><span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] uppercase text-emerald-700">{tournament.format}</span></div><p className="mt-2 text-sm text-[#626972]">{tournament.format === "internal" ? "All enrolled teams play one another." : "Teams play the teams in the opposite group."}</p><p className="mt-2 text-xs text-[#626972]">{formatEasternTime(tournament.event_date)}{tournament.location ? ` · ${tournament.location}` : ""}</p><div className="mt-4 flex gap-2"><button type="button" onClick={() => editTournament(tournament)} className="rounded-full border border-[#cdd8f7] px-3 py-1.5 text-xs font-semibold text-[#3949ab]">Edit league</button><button type="button" onClick={() => { if (window.confirm(`Delete ${tournament.name} and all its pairs and results?`)) void deleteTournament(tournament); }} className="rounded-full border border-rose-200 px-3 py-1.5 text-xs font-semibold text-rose-700">Delete league</button></div></div>)}</div>
+                <div className="mt-5 space-y-3">{tournaments.map((tournament) => <div key={tournament.id} className="rounded-[20px] border border-[#e4dfdc] bg-white p-4"><div className="flex items-center justify-between gap-3"><p className="font-semibold text-[#17191d]">{tournament.name}</p><span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] uppercase text-emerald-700">{tournament.format}</span></div><p className="mt-2 text-sm text-[#626972]">{tournament.format === "internal" ? "All enrolled teams play one another." : "Teams play the teams in the opposite group."}</p><p className="mt-2 text-xs text-[#626972]">{formatEasternTime(tournament.event_date)}{tournament.location ? ` · ${tournament.location}` : ""}</p><div className="mt-4 flex flex-wrap gap-2"><button type="button" onClick={() => editTournament(tournament)} className="rounded-full border border-[#cdd8f7] px-3 py-1.5 text-xs font-semibold text-[#3949ab]">Edit league</button><button type="button" onClick={() => void clearTournamentResults(tournament)} className="rounded-full border border-[#e2c15a] px-3 py-1.5 text-xs font-semibold text-[#8d650b]">Clear results</button><button type="button" onClick={() => { if (window.confirm(`Delete ${tournament.name} and all its pairs and results?`)) void deleteTournament(tournament); }} className="rounded-full border border-rose-200 px-3 py-1.5 text-xs font-semibold text-rose-700">Delete league</button></div></div>)}</div>
               </div>
             </section>
           )}
