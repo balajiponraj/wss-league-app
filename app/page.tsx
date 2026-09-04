@@ -838,7 +838,7 @@ export default function Home() {
           </div>
         </header>
 
-        <main className="space-y-6">
+        <main data-playoff-complete={playoffComplete ? "true" : "false"} className="space-y-6">
           {notice && notice !== "Connected to Supabase. Live sync is active." && <p className="sr-only" aria-live="polite">{notice}</p>}
 
           {showLogin && <div className="rounded-[24px] border border-[#d9d3d0] bg-[#191c20] p-5 text-white"><div className="flex items-center justify-between"><div><p className="text-[10px] uppercase tracking-[0.25em] text-slate-400">Restricted area</p><h2 className="mt-1 text-2xl font-semibold">Admin login</h2></div><button type="button" onClick={() => setShowLogin(false)} className="rounded-full border border-white/15 px-3 py-1.5 text-xs text-slate-200">Close</button></div><form onSubmit={handleLogin} className="mt-5 grid gap-3 sm:grid-cols-2"><input type="email" required value={authEmail} onChange={(event) => setAuthEmail(event.target.value)} placeholder="Email" className="rounded-xl border border-white/10 bg-[#101316] px-3 py-2.5 text-sm text-white outline-none" /><input type="password" required value={authPassword} onChange={(event) => setAuthPassword(event.target.value)} placeholder="Password" className="rounded-xl border border-white/10 bg-[#101316] px-3 py-2.5 text-sm text-white outline-none" /><button type="submit" disabled={authBusy} className="rounded-full bg-gradient-to-r from-emerald-500 to-cyan-500 px-4 py-3 text-sm font-semibold text-white sm:col-span-2">{authBusy ? "Signing in..." : "Sign in"}</button></form></div>}

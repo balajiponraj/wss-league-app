@@ -35,6 +35,14 @@ section[data-view="standings"] > :nth-child(3) {
   display: none;
 }
 
+main[data-playoff-complete="true"] > section:nth-of-type(2) {
+  display: none;
+}
+
+main[data-playoff-complete="true"] > section:nth-of-type(3) button {
+  display: none;
+}
+
 * {
   box-sizing: border-box;
 }
