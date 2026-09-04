@@ -179,7 +179,7 @@ main table thead {
   border-color: rgba(91, 76, 48, 0.55) !important;
 }
 
-.dashboard-live-panel > button {
+.dashboard-live-panel > button.dashboard-save-result {
   background-image: linear-gradient(100deg, #b98a22, #f7c62f) !important;
   color: #17263a !important;
   box-shadow: 0 10px 24px rgba(183, 143, 41, 0.3) !important;
@@ -189,8 +189,8 @@ main table thead {
   min-height: 46px;
   background: linear-gradient(100deg, #8b6312 0%, #d8aa2e 25%, #fff1a4 51%, #e8bd45 68%, #996d13 100%) !important;
   color: #31230b !important;
-  border: 1px solid rgba(118, 82, 12, 0.58);
-  box-shadow: 0 12px 19px rgba(93, 67, 17, 0.32), inset 0 1px rgba(255, 255, 255, 0.78), inset 0 -2px rgba(91, 59, 5, 0.2);
+  border: 1px solid rgba(118, 82, 12, 0.58) !important;
+  box-shadow: 0 12px 19px rgba(93, 67, 17, 0.32), inset 0 1px rgba(255, 255, 255, 0.78), inset 0 -2px rgba(91, 59, 5, 0.2) !important;
   text-shadow: 0 1px rgba(255, 240, 166, 0.55);
   font-weight: 600;
 }
@@ -216,28 +216,28 @@ main table thead {
 }
 
 .dashboard-leaderboard .rank-medal-1 {
-  width: 48px;
-  height: 54px;
-  border-radius: 13px 13px 18px 18px;
-  clip-path: polygon(50% 0%, 92% 11%, 100% 69%, 50% 100%, 0% 69%, 8% 11%);
-  font-size: 17px;
+  width: 48px !important;
+  height: 54px !important;
+  border-radius: 13px 13px 18px 18px !important;
+  clip-path: polygon(50% 0%, 92% 11%, 100% 69%, 50% 100%, 0% 69%, 8% 11%) !important;
+  font-size: 17px !important;
   box-shadow: 0 6px 13px rgba(128, 89, 10, 0.35), inset 0 1px rgba(255,255,255,0.85);
 }
 
 .dashboard-leaderboard .rank-medal-2 {
-  width: 45px;
-  height: 45px;
-  border-radius: 50%;
-  font-size: 16px;
+  width: 45px !important;
+  height: 45px !important;
+  border-radius: 50% !important;
+  font-size: 16px !important;
   box-shadow: 0 5px 11px rgba(128, 89, 10, 0.28), inset 0 1px rgba(255,255,255,0.8);
 }
 
 .dashboard-leaderboard .rank-medal-3 {
-  width: 45px;
-  height: 45px;
-  border-radius: 11px;
-  clip-path: polygon(50% 0%, 90% 18%, 100% 66%, 70% 100%, 30% 100%, 0% 66%, 10% 18%);
-  font-size: 16px;
+  width: 45px !important;
+  height: 45px !important;
+  border-radius: 11px !important;
+  clip-path: polygon(50% 0%, 90% 18%, 100% 66%, 70% 100%, 30% 100%, 0% 66%, 10% 18%) !important;
+  font-size: 16px !important;
   box-shadow: 0 5px 11px rgba(128, 89, 10, 0.28), inset 0 1px rgba(255,255,255,0.8);
 }
 
