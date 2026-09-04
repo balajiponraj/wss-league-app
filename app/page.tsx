@@ -586,24 +586,6 @@ export default function Home() {
     setNotice(`Playoff result saved for ${teamLabel(fixture.teamA)} vs ${teamLabel(fixture.teamB)}.`);
   };
 
-  const clearResults = async () => {
-    if (!window.confirm("Clear all saved match results? Players, pairs, and leagues will remain.")) return;
-    if (hasSupabaseConfig && supabase) {
-      const { error } = await supabase.from("matches").delete().neq("id", "");
-      if (error) {
-        setNotice(`Could not clear results: ${error.message}`);
-        return;
-      }
-      await refreshDatabase();
-      setLiveScore({ playerA: "", playerB: "" });
-      setNotice("All match results were cleared.");
-      return;
-    }
-    setMatches([]);
-    setLiveScore({ playerA: "", playerB: "" });
-    setNotice("All match results were cleared.");
-  };
-
   const addTeam = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!teamDraft.playerAId || !teamDraft.playerBId || teamDraft.playerAId === teamDraft.playerBId) {
@@ -961,7 +943,7 @@ export default function Home() {
               <section className="rounded-[26px] border border-[#d9d3d0] bg-[#f9f7f5] p-5">
                 <div className="flex items-center justify-between gap-3">
                   <div><p className="text-[10px] uppercase tracking-[0.25em] text-[#696f77]">Round robin fixtures</p><h2 className="mt-1 text-2xl font-semibold text-[#181a1d]">{selectedTournament?.name ?? "Select a tournament"}</h2></div>
-                  <div className="flex items-center gap-3"><div className="text-right"><p className="text-sm font-semibold text-[#30343a]">{tournamentFixtures.length} total</p><p className="text-xs uppercase tracking-[0.14em] text-[#a8790e]">{tournamentFixtures.filter((fixture) => fixture.match).length} completed</p></div>{isAuthenticated && <button type="button" onClick={() => void clearResults()} className="rounded-full border border-[#e2c15a] px-3 py-1.5 text-xs font-semibold text-[#8d650b]">Clear results</button>}</div>
+                  <div className="text-right"><p className="text-sm font-semibold text-[#30343a]">{tournamentFixtures.length} total</p><p className="text-xs uppercase tracking-[0.14em] text-[#a8790e]">{tournamentFixtures.filter((fixture) => fixture.match).length} completed</p></div>
                 </div>
                 <div className="mt-5">
                   <select value={fixtureTeamFilter} onChange={(event) => setFixtureTeamFilter(event.target.value)} className="w-full rounded-xl border border-[#ded8d4] bg-white px-3 py-2.5 text-sm text-[#17191d] outline-none"><option value="">Select a team to view its results</option>{tournamentTeams.map((team) => <option key={team.id} value={team.id}>{teamLabel(team)}</option>)}</select>
