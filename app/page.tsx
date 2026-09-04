@@ -267,6 +267,9 @@ export default function Home() {
     `${playerMap[team.playerAId]?.name ?? "Player"} / ${playerMap[team.playerBId]?.name ?? "Player"} (${team.group_name})`;
 
   const selectedTournament = tournaments.find((tournament) => tournament.id === matchDraft.tournamentId);
+  const tournamentTeams = teams.filter((team) => team.tournamentId === selectedTournament?.id);
+  const team1Group = selectedTournament?.group_a;
+  const team2Group = selectedTournament?.format === "external" ? selectedTournament.group_b : selectedTournament?.group_a;
   const tournamentFixtures = useMemo(() => {
     if (!selectedTournament) return [];
     const tournamentTeams = teams.filter((team) => team.tournamentId === selectedTournament.id);
@@ -278,10 +281,10 @@ export default function Home() {
     }));
     return fixtures;
   }, [matches, selectedTournament, teams]);
-  const eligibleTeamB = teams.filter((team) => {
-    const teamA = teamMap[matchDraft.teamAId];
-    if (!teamA || team.id === teamA.id) return false;
-    return selectedTournament?.format !== "external" || team.group_name !== teamA.group_name;
+  const eligibleTeamA = tournamentTeams.filter((team) => team.group_name === team1Group);
+  const eligibleTeamB = tournamentTeams.filter((team) => {
+    if (team.id === matchDraft.teamAId) return false;
+    return team.group_name === team2Group;
   });
 
   const fixtureCount = (tournament: Tournament) => {
@@ -631,44 +634,6 @@ export default function Home() {
 
           {tab === "dashboard" && (
             <>
-              <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                <div className="rounded-[22px] border border-[#dcd6d2] bg-[#191c20] p-5 text-white shadow-[0_18px_28px_rgba(17,24,39,0.12)]">
-                  <p className="text-[10px] uppercase tracking-[0.24em] text-slate-400">Players</p>
-                  <div className="mt-4 flex items-end justify-between">
-                    <span className="text-3xl font-bold">{players.length}</span>
-                    <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
-                  </div>
-                </div>
-
-                <div className="rounded-[22px] border border-[#dcd6d2] bg-[#f8f7f5] p-5 shadow-[0_10px_20px_rgba(0,0,0,0.04)]">
-                  <p className="text-[10px] uppercase tracking-[0.24em] text-[#676d75]">Matches</p>
-                  <div className="mt-4 flex items-end justify-between">
-                    <span className="text-3xl font-bold text-[#17191d]">{matches.length}</span>
-                    <span className="h-2.5 w-2.5 rounded-full bg-violet-500" />
-                  </div>
-                </div>
-
-                <div className="rounded-[22px] border border-[#dcd6d2] bg-[#f8f7f5] p-5 shadow-[0_10px_20px_rgba(0,0,0,0.04)]">
-                  <p className="text-[10px] uppercase tracking-[0.24em] text-[#676d75]">Wins</p>
-                  <div className="mt-4 flex items-end justify-between">
-                    <span className="text-3xl font-bold text-[#17191d]">
-                      {matches.filter((match) => match.winnerId === match.playerAId).length}
-                    </span>
-                    <span className="h-2.5 w-2.5 rounded-full bg-sky-500" />
-                  </div>
-                </div>
-
-                <div className="rounded-[22px] border border-[#dcd6d2] bg-[#f8f7f5] p-5 shadow-[0_10px_20px_rgba(0,0,0,0.04)]">
-                  <p className="text-[10px] uppercase tracking-[0.24em] text-[#676d75]">Leader</p>
-                  <div className="mt-4 flex items-end justify-between">
-                    <span className="text-2xl font-bold text-[#17191d]">
-                      {leaderboard[0] ? teamLabel(leaderboard[0].team) : "-"}
-                    </span>
-                    <span className="h-2.5 w-2.5 rounded-full bg-amber-500" />
-                  </div>
-                </div>
-              </section>
-
               <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
                 <div className="rounded-[26px] border border-[#d9d3d0] bg-[#1b1d20] p-5 text-white shadow-[0_16px_30px_rgba(17,24,39,0.12)]">
                   <div className="mb-4 flex items-center justify-between">
@@ -695,7 +660,7 @@ export default function Home() {
                           setMatchDraft((current) => ({ ...current, teamAId: event.target.value }))
                         }
                       >
-                        {teams.map((team) => (
+                        {eligibleTeamA.map((team) => (
                           <option key={team.id} value={team.id}>
                             {teamLabel(team)}
                           </option>
