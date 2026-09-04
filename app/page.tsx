@@ -129,7 +129,7 @@ export default function Home() {
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
   const [tab, setTab] = useState<TabName>("dashboard");
   const [newPlayer, setNewPlayer] = useState({ name: "", group_name: "WSS" });
-  const [liveScore, setLiveScore] = useState({ playerA: 0, playerB: 0 });
+  const [liveScore, setLiveScore] = useState({ playerA: "", playerB: "" });
   const [matchDraft, setMatchDraft] = useState({
     teamAId: "",
     teamBId: "",
@@ -531,22 +531,24 @@ export default function Home() {
       return;
     }
 
-    if (liveScore.playerA === 0 && liveScore.playerB === 0) {
+    const playerAScore = Number(liveScore.playerA);
+    const playerBScore = Number(liveScore.playerB);
+    if (!Number.isFinite(playerAScore) || !Number.isFinite(playerBScore) || (playerAScore === 0 && playerBScore === 0)) {
       setNotice("Score cannot be 0-0. Enter a result before saving.");
       return;
     }
 
-    const winnerId = liveScore.playerA > liveScore.playerB ? teamA.playerAId : teamB.playerAId;
+    const winnerId = playerAScore > playerBScore ? teamA.playerAId : teamB.playerAId;
 
     const existingMatch = matches.find((match) => match.tournamentId === matchDraft.tournamentId && ((match.teamAId === teamA.id && match.teamBId === teamB.id) || (match.teamAId === teamB.id && match.teamBId === teamA.id)));
     const record: MatchRecord = {
       id: existingMatch?.id ?? createId(),
       playerAId: teamA.playerAId,
       playerBId: teamB.playerAId,
-      playerAScore: liveScore.playerA,
-      playerBScore: liveScore.playerB,
+      playerAScore,
+      playerBScore,
       winnerId,
-      note: undefined,
+      note: "",
       createdAt: new Date().toISOString(),
       teamAId: teamA.id,
       teamBId: teamB.id,
@@ -571,7 +573,7 @@ export default function Home() {
       setNotice(existingMatch ? "Match result updated locally." : "Match result saved to local database.");
     }
 
-    setLiveScore({ playerA: 0, playerB: 0 });
+    setLiveScore({ playerA: "", playerB: "" });
   };
 
   return (
@@ -668,7 +670,7 @@ export default function Home() {
                       </select>
 
                       <div className="mt-5 flex items-center justify-between">
-                        <input type="number" min={0} value={liveScore.playerA} onChange={(event) => setLiveScore((current) => ({ ...current, playerA: Number(event.target.value) || 0 }))} className="w-28 rounded-xl border border-white/10 bg-[#121417] px-3 py-2 text-4xl font-bold text-white outline-none" />
+                        <input type="text" inputMode="numeric" pattern="[0-9]*" value={liveScore.playerA} onChange={(event) => setLiveScore((current) => ({ ...current, playerA: event.target.value.replace(/\D/g, "") }))} placeholder="0" className="w-28 rounded-xl border border-white/10 bg-[#121417] px-3 py-2 text-4xl font-bold text-white outline-none" />
                       </div>
                     </div>
 
@@ -691,7 +693,7 @@ export default function Home() {
                       </select>
 
                       <div className="mt-5 flex items-center justify-between">
-                        <input type="number" min={0} value={liveScore.playerB} onChange={(event) => setLiveScore((current) => ({ ...current, playerB: Number(event.target.value) || 0 }))} className="w-28 rounded-xl border border-white/10 bg-[#121417] px-3 py-2 text-4xl font-bold text-white outline-none" />
+                        <input type="text" inputMode="numeric" pattern="[0-9]*" value={liveScore.playerB} onChange={(event) => setLiveScore((current) => ({ ...current, playerB: event.target.value.replace(/\D/g, "") }))} placeholder="0" className="w-28 rounded-xl border border-white/10 bg-[#121417] px-3 py-2 text-4xl font-bold text-white outline-none" />
                       </div>
                     </div>
                   </div>
@@ -970,7 +972,7 @@ export default function Home() {
                         min={0}
                         value={liveScore.playerA}
                         onChange={(event) =>
-                          setLiveScore((current) => ({ ...current, playerA: Number(event.target.value) || 0 }))
+                          setLiveScore((current) => ({ ...current, playerA: event.target.value.replace(/\D/g, "") }))
                         }
                         className="w-full rounded-xl border border-white/10 bg-[#171b1f] px-3 py-2 text-sm text-white outline-none"
                       />
@@ -985,7 +987,7 @@ export default function Home() {
                         min={0}
                         value={liveScore.playerB}
                         onChange={(event) =>
-                          setLiveScore((current) => ({ ...current, playerB: Number(event.target.value) || 0 }))
+                          setLiveScore((current) => ({ ...current, playerB: event.target.value.replace(/\D/g, "") }))
                         }
                         className="w-full rounded-xl border border-white/10 bg-[#171b1f] px-3 py-2 text-sm text-white outline-none"
                       />
