@@ -70,6 +70,8 @@ drop policy if exists "WSS teams can be deleted" on public.teams;
 drop policy if exists "WSS tournaments can be read" on public.tournaments;
 drop policy if exists "WSS tournaments can be added" on public.tournaments;
 drop policy if exists "WSS tournaments can be deleted" on public.tournaments;
+drop policy if exists "WSS teams can be updated" on public.teams;
+drop policy if exists "WSS tournaments can be updated" on public.tournaments;
 
 create policy "WSS players can be read"
   on public.players for select
@@ -117,6 +119,12 @@ create policy "WSS teams can be deleted"
   to anon, authenticated
   using (true);
 
+create policy "WSS teams can be updated"
+  on public.teams for update
+  to anon, authenticated
+  using (true)
+  with check (true);
+
 create policy "WSS tournaments can be read"
   on public.tournaments for select
   to anon, authenticated
@@ -131,6 +139,12 @@ create policy "WSS tournaments can be deleted"
   on public.tournaments for delete
   to anon, authenticated
   using (true);
+
+create policy "WSS tournaments can be updated"
+  on public.tournaments for update
+  to anon, authenticated
+  using (true)
+  with check (true);
 
 do $$
 begin

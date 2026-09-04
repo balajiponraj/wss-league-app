@@ -19,5 +19,9 @@ drop policy if exists "WSS teams can be deleted" on public.teams;
 create policy "WSS teams can be deleted" on public.teams for delete to anon, authenticated using (true);
 drop policy if exists "WSS tournaments can be deleted" on public.tournaments;
 create policy "WSS tournaments can be deleted" on public.tournaments for delete to anon, authenticated using (true);
+drop policy if exists "WSS teams can be updated" on public.teams;
+create policy "WSS teams can be updated" on public.teams for update to anon, authenticated using (true) with check (true);
+drop policy if exists "WSS tournaments can be updated" on public.tournaments;
+create policy "WSS tournaments can be updated" on public.tournaments for update to anon, authenticated using (true) with check (true);
 
 NOTIFY pgrst, 'reload schema';

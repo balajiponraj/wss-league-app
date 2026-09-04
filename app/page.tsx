@@ -109,6 +109,7 @@ export default function Home() {
   const [pairNames, setPairNames] = useState<PairInput[]>([]);
   const [deletePlayerDraft, setDeletePlayerDraft] = useState({ name: "", group_name: "WSS" });
   const [deleteTournamentId, setDeleteTournamentId] = useState("");
+  const [editingTournamentId, setEditingTournamentId] = useState<string | null>(null);
   const [standingsTournamentId, setStandingsTournamentId] = useState("");
   const [notice, setNotice] = useState("Local storage mode enabled. Connect Supabase for live database storage.");
 
@@ -231,7 +232,7 @@ export default function Home() {
   const teamMap = useMemo(() => Object.fromEntries(teams.map((team) => [team.id, team])), [teams]);
 
   const teamLabel = (team: Team) =>
-    team.name || `${playerMap[team.playerAId]?.name ?? "Player"} / ${playerMap[team.playerBId]?.name ?? "Player"}`;
+    `${playerMap[team.playerAId]?.name ?? "Player"} / ${playerMap[team.playerBId]?.name ?? "Player"} (${team.group_name})`;
 
   const selectedTournament = tournaments.find((tournament) => tournament.id === matchDraft.tournamentId);
   const tournamentFixtures = useMemo(() => {
@@ -405,6 +406,16 @@ export default function Home() {
     setPairNames(groups.flatMap((group) => Array.from({ length: count }, (_, index) => ({ group, index, player1: "", player2: "" }))));
   };
 
+  const editTournament = (tournament: Tournament) => {
+    setEditingTournamentId(tournament.id);
+    setTournamentDraft({ name: tournament.name, format: tournament.format, event_date: tournament.event_date ? tournament.event_date.slice(0, 16) : "", location: tournament.location, group_a: tournament.group_a, group_b: tournament.group_b, teams_per_group: tournament.teams_per_group });
+    const tournamentTeams = teams.filter((team) => team.tournamentId === tournament.id);
+    const groups = tournament.format === "internal" ? (["a"] as const) : (["a", "b"] as const);
+    setPairNames(groups.flatMap((group) => tournamentTeams.filter((team) => team.group_name === (group === "a" ? tournament.group_a : tournament.group_b)).map((team, index) => ({ group, index, player1: team.playerAId, player2: team.playerBId }))));
+    setTab("tournaments");
+    setNotice(`Editing ${tournament.name}. Update the details and save.`);
+  };
+
   const addTournament = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!tournamentDraft.name.trim()) {
@@ -413,7 +424,7 @@ export default function Home() {
     }
 
     const createdTournament: Tournament = {
-      id: createId(),
+      id: editingTournamentId ?? createId(),
       name: tournamentDraft.name.trim(),
       format: tournamentDraft.format,
       status: "active",
@@ -438,22 +449,42 @@ export default function Home() {
     });
 
     if (hasSupabaseConfig && supabase) {
-      const { error } = await supabase.from("tournaments").insert([createdTournament]);
+      const tournamentRequest = editingTournamentId
+        ? await supabase.from("tournaments").update(createdTournament).eq("id", editingTournamentId)
+        : await supabase.from("tournaments").insert([createdTournament]);
+      const { error } = tournamentRequest;
       if (error) {
         setNotice(`League save failed: ${error.message}`);
         return;
       }
-      const { error: teamsError } = await supabase.from("teams").insert(createdTeams);
-      if (teamsError) {
-        setNotice(`Pair save failed: ${teamsError.message}`);
-        return;
+      if (editingTournamentId) {
+        const existingTeams = teams.filter((team) => team.tournamentId === editingTournamentId);
+        for (const [index, team] of existingTeams.entries()) {
+          const replacement = createdTeams[index];
+          if (replacement) {
+            const { error: updateError } = await supabase.from("teams").update({ playerAId: replacement.playerAId, playerBId: replacement.playerBId, group_name: replacement.group_name, name: replacement.name }).eq("id", team.id);
+            if (updateError) { setNotice(`Pair update failed: ${updateError.message}`); return; }
+          } else if (!matches.some((match) => match.teamAId === team.id || match.teamBId === team.id)) {
+            const { error: deleteError } = await supabase.from("teams").delete().eq("id", team.id);
+            if (deleteError) { setNotice(`Pair delete failed: ${deleteError.message}`); return; }
+          }
+        }
+        const newTeams = createdTeams.slice(existingTeams.length);
+        if (newTeams.length) {
+          const { error: insertError } = await supabase.from("teams").insert(newTeams);
+          if (insertError) { setNotice(`Pair save failed: ${insertError.message}`); return; }
+        }
+      } else {
+        const { error: teamsError } = await supabase.from("teams").insert(createdTeams);
+        if (teamsError) { setNotice(`Pair save failed: ${teamsError.message}`); return; }
       }
     }
-    setTournaments((current) => [...current, createdTournament]);
-    setTeams((current) => [...current, ...createdTeams]);
+    setTournaments((current) => editingTournamentId ? current.map((item) => item.id === editingTournamentId ? createdTournament : item) : [...current, createdTournament]);
+    setTeams((current) => editingTournamentId ? current.filter((team) => team.tournamentId !== editingTournamentId || matches.some((match) => match.teamAId === team.id || match.teamBId === team.id)).map((team) => { const replacement = createdTeams.find((item) => item.name === team.name); return replacement ? { ...replacement, id: team.id } : team; }) : [...current, ...createdTeams]);
     setMatchDraft((current) => ({ ...current, tournamentId: createdTournament.id }));
     setTournamentDraft({ name: "", format: "internal", event_date: "", location: "", group_a: "WSS", group_b: "DCSC", teams_per_group: 7 });
     setPairNames([]);
+    setEditingTournamentId(null);
     setNotice(`${createdTournament.name} created as an ${createdTournament.format} tournament.`);
   };
 
@@ -828,7 +859,7 @@ export default function Home() {
             <section className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
               <div className="rounded-[26px] border border-[#d9d3d0] bg-[#171a1d] p-5 text-white">
                 <p className="text-[10px] uppercase tracking-[0.25em] text-slate-400">League setup</p>
-                <h2 className="mt-2 text-2xl font-semibold">Create a tournament</h2>
+                <h2 className="mt-2 text-2xl font-semibold">{editingTournamentId ? "Edit tournament" : "Create a tournament"}</h2>
                 <form onSubmit={addTournament} className="mt-5 space-y-4">
                   <input value={tournamentDraft.name} onChange={(event) => setTournamentDraft((current) => ({ ...current, name: event.target.value }))} placeholder="WSS Internal League" className="w-full rounded-xl border border-white/10 bg-[#101316] px-3 py-2.5 text-sm text-white outline-none" />
                   <input type="datetime-local" value={tournamentDraft.event_date} onChange={(event) => setTournamentDraft((current) => ({ ...current, event_date: event.target.value }))} className="w-full rounded-xl border border-white/10 bg-[#101316] px-3 py-2.5 text-sm text-white outline-none" />
@@ -846,13 +877,14 @@ export default function Home() {
                     <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Enter tournament pairs</p>
                     {tournamentPairs.map((pair) => <div key={`${pair.group}-${pair.index}`}><p className="mb-1 text-xs font-semibold text-slate-300">Pair {pair.index + 1} · {pair.group === "a" ? tournamentDraft.group_a : tournamentDraft.group_b}</p><div className="grid grid-cols-2 gap-2"><select value={pair.player1} onChange={(event) => setPairNames((current) => { const next = current.length ? [...current] : tournamentPairs.map((item) => ({ ...item })); next.find((item) => item.group === pair.group && item.index === pair.index)!.player1 = event.target.value; return next; })} className="w-full rounded-lg border border-white/10 bg-[#171b1f] px-2.5 py-2 text-sm text-white outline-none"><option value="">Player 1</option>{availablePairPlayers(pair, "player1").map((player) => <option key={player.id} value={player.id}>{player.name}</option>)}</select><select value={pair.player2} onChange={(event) => setPairNames((current) => { const next = current.length ? [...current] : tournamentPairs.map((item) => ({ ...item })); next.find((item) => item.group === pair.group && item.index === pair.index)!.player2 = event.target.value; return next; })} className="w-full rounded-lg border border-white/10 bg-[#171b1f] px-2.5 py-2 text-sm text-white outline-none"><option value="">Player 2</option>{availablePairPlayers(pair, "player2").map((player) => <option key={player.id} value={player.id}>{player.name}</option>)}</select></div></div>)}
                   </div>
-                  <button type="submit" className="w-full rounded-full bg-gradient-to-r from-emerald-500 to-cyan-500 px-4 py-3 text-sm font-semibold text-white">Create league</button>
+                  <button type="submit" className="w-full rounded-full bg-gradient-to-r from-emerald-500 to-cyan-500 px-4 py-3 text-sm font-semibold text-white">{editingTournamentId ? "Save league changes" : "Create league"}</button>
+                  {editingTournamentId && <button type="button" onClick={() => { setEditingTournamentId(null); setPairNames([]); }} className="w-full rounded-full border border-white/15 px-4 py-3 text-sm font-semibold text-slate-200">Cancel editing</button>}
                 </form>
               </div>
               <div className="rounded-[26px] border border-[#d9d3d0] bg-[#f9f7f5] p-5">
                 <p className="text-[10px] uppercase tracking-[0.25em] text-[#696f77]">Competition calendar</p>
                 <h2 className="mt-2 text-2xl font-semibold text-[#181a1d]">Your leagues</h2>
-                <div className="mt-5 space-y-3">{tournaments.map((tournament) => <div key={tournament.id} className="rounded-[20px] border border-[#e4dfdc] bg-white p-4"><div className="flex items-center justify-between gap-3"><p className="font-semibold text-[#17191d]">{tournament.name}</p><span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] uppercase text-emerald-700">{tournament.format}</span></div><p className="mt-2 text-sm text-[#626972]">{tournament.format === "internal" ? "All enrolled teams play one another." : "Teams play the teams in the opposite group."}</p><p className="mt-2 text-xs text-[#626972]">{tournament.event_date ? new Date(tournament.event_date).toLocaleString() : "Date to be announced"}{tournament.location ? ` · ${tournament.location}` : ""}</p><button type="button" onClick={() => { if (window.confirm(`Delete ${tournament.name} and all its pairs and results?`)) void deleteTournament(tournament); }} className="mt-4 rounded-full border border-rose-200 px-3 py-1.5 text-xs font-semibold text-rose-700">Delete league</button></div>)}</div>
+                <div className="mt-5 space-y-3">{tournaments.map((tournament) => <div key={tournament.id} className="rounded-[20px] border border-[#e4dfdc] bg-white p-4"><div className="flex items-center justify-between gap-3"><p className="font-semibold text-[#17191d]">{tournament.name}</p><span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] uppercase text-emerald-700">{tournament.format}</span></div><p className="mt-2 text-sm text-[#626972]">{tournament.format === "internal" ? "All enrolled teams play one another." : "Teams play the teams in the opposite group."}</p><p className="mt-2 text-xs text-[#626972]">{tournament.event_date ? new Date(tournament.event_date).toLocaleString() : "Date to be announced"}{tournament.location ? ` · ${tournament.location}` : ""}</p><div className="mt-4 flex gap-2"><button type="button" onClick={() => editTournament(tournament)} className="rounded-full border border-[#cdd8f7] px-3 py-1.5 text-xs font-semibold text-[#3949ab]">Edit league</button><button type="button" onClick={() => { if (window.confirm(`Delete ${tournament.name} and all its pairs and results?`)) void deleteTournament(tournament); }} className="rounded-full border border-rose-200 px-3 py-1.5 text-xs font-semibold text-rose-700">Delete league</button></div></div>)}</div>
               </div>
             </section>
           )}
