@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://wss-league-app.vercel.app"),
+  metadataBase: new URL("https://wss-hub.vercel.app"),
   title: "WSS Badminton League",
   description: "WHITBY SMASH SQUAD badminton league, standings, fixtures, and playoff results.",
   icons: {
@@ -25,7 +25,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "WSS Badminton League",
     description: "WHITBY SMASH SQUAD badminton league, standings, fixtures, and playoff results.",
-    url: "https://wss-league-app.vercel.app",
+    url: "https://wss-hub.vercel.app",
     siteName: "WSS Badminton League",
     type: "website",
     images: [{ url: "/wss-shuttlecock-logo.png", width: 600, height: 338, alt: "WSS Badminton League shuttlecock" }],
