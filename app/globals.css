@@ -132,6 +132,72 @@ main table thead {
   color: #f4c83e;
 }
 
+.dashboard-live-panel {
+  background:
+    radial-gradient(circle at 76% 10%, rgba(255, 221, 133, 0.32), transparent 25%),
+    linear-gradient(145deg, #f5f0df 0%, #ded7c7 100%) !important;
+  color: #17263a !important;
+  border-color: rgba(183, 143, 41, 0.48) !important;
+}
+
+.dashboard-live-panel [class*="text-slate"] {
+  color: #766b58 !important;
+}
+
+.dashboard-live-panel select {
+  background: #0d2b4a !important;
+  color: #f7c62f !important;
+  border-color: rgba(247, 198, 47, 0.5) !important;
+}
+
+.dashboard-live-panel select option {
+  background: #0d2b4a;
+  color: #f7c62f;
+}
+
+.dashboard-live-panel > div > div > div {
+  background: rgba(255, 255, 255, 0.28) !important;
+  border-color: rgba(122, 99, 49, 0.3) !important;
+}
+
+.dashboard-live-panel input {
+  background: #f8f6ef !important;
+  color: #17263a !important;
+  border-color: rgba(91, 76, 48, 0.55) !important;
+}
+
+.dashboard-live-panel > button {
+  background-image: linear-gradient(100deg, #b98a22, #f7c62f) !important;
+  color: #17263a !important;
+  box-shadow: 0 10px 24px rgba(183, 143, 41, 0.3) !important;
+}
+
+.dashboard-leaderboard {
+  background:
+    radial-gradient(circle at 80% 8%, rgba(255, 219, 122, 0.28), transparent 23%),
+    rgba(250, 248, 241, 0.92) !important;
+}
+
+.dashboard-leaderboard .rank-medal-1,
+.dashboard-leaderboard .rank-medal-2,
+.dashboard-leaderboard .rank-medal-3 {
+  color: #17263a !important;
+  border: 2px solid #c99418;
+  box-shadow: 0 3px 8px rgba(111, 83, 22, 0.2);
+}
+
+.dashboard-leaderboard .rank-medal-1 {
+  background: linear-gradient(145deg, #fff1a7, #c99418) !important;
+}
+
+.dashboard-leaderboard .rank-medal-2 {
+  background: linear-gradient(145deg, #f8fafc, #aeb8c2) !important;
+}
+
+.dashboard-leaderboard .rank-medal-3 {
+  background: linear-gradient(145deg, #e7ad78, #9c5d35) !important;
+}
+
 section[data-view="standings"] > :nth-child(3) {
   display: none;
 }
