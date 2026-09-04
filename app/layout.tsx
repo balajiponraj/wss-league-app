@@ -14,8 +14,28 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "WSS League Desk",
-  description: "WHITBY SMASH SQUAD league dashboard and standings app",
+  metadataBase: new URL("https://wss-league-app.vercel.app"),
+  title: "WSS Badminton League",
+  description: "WHITBY SMASH SQUAD badminton league, standings, fixtures, and playoff results.",
+  icons: {
+    icon: "/wss-shuttlecock-logo.png",
+    shortcut: "/wss-shuttlecock-logo.png",
+    apple: "/wss-shuttlecock-logo.png",
+  },
+  openGraph: {
+    title: "WSS Badminton League",
+    description: "WHITBY SMASH SQUAD badminton league, standings, fixtures, and playoff results.",
+    url: "https://wss-league-app.vercel.app",
+    siteName: "WSS Badminton League",
+    type: "website",
+    images: [{ url: "/wss-shuttlecock-logo.png", width: 600, height: 338, alt: "WSS Badminton League shuttlecock" }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "WSS Badminton League",
+    description: "WHITBY SMASH SQUAD badminton league, standings, fixtures, and playoff results.",
+    images: ["/wss-shuttlecock-logo.png"],
+  },
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
