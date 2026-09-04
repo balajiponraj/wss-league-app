@@ -45,6 +45,8 @@ type Tournament = {
   teams_per_group: number;
 };
 
+type PairInput = { group: "a" | "b"; index: number; player1: string; player2: string };
+
 type TabName = "dashboard" | "players" | "teams" | "tournaments" | "standings" | "matches";
 
 const STORAGE_KEY = "wss-badminton-db-v1";
@@ -104,7 +106,9 @@ export default function Home() {
   });
   const [teamDraft, setTeamDraft] = useState({ name: "", playerAId: "", playerBId: "", group_name: "A" });
   const [tournamentDraft, setTournamentDraft] = useState({ name: "", format: "internal" as "internal" | "external", event_date: "", location: "", group_a: "WSS", group_b: "DCSC", teams_per_group: 7 });
-  const [pairNames, setPairNames] = useState<{ group: "a" | "b"; index: number; player1: string; player2: string }[]>([]);
+  const [pairNames, setPairNames] = useState<PairInput[]>([]);
+  const [deletePlayerDraft, setDeletePlayerDraft] = useState({ name: "", group_name: "WSS" });
+  const [deleteTournamentId, setDeleteTournamentId] = useState("");
   const [standingsTournamentId, setStandingsTournamentId] = useState("");
   const [notice, setNotice] = useState("Local storage mode enabled. Connect Supabase for live database storage.");
 
@@ -261,6 +265,17 @@ export default function Home() {
         Array.from({ length: tournamentDraft.teams_per_group }, (_, index) => ({ group, index, player1: "", player2: "" })),
       );
 
+  const tournamentPlayers = (group: "a" | "b") =>
+    players.filter((player) => player.group_name === (group === "a" ? tournamentDraft.group_a : tournamentDraft.group_b));
+
+  const availablePairPlayers = (pair: PairInput, slot: "player1" | "player2") => {
+    const selectedInGroup = tournamentPairs
+      .filter((item) => item.group === pair.group && item.index !== pair.index)
+      .flatMap((item) => [item.player1, item.player2]);
+    const otherSlot = tournamentPairs.find((item) => item.group === pair.group && item.index === pair.index)?.[slot === "player1" ? "player2" : "player1"];
+    return tournamentPlayers(pair.group).filter((player) => !selectedInGroup.includes(player.id) && (player.id === pair[slot] || player.id !== otherSlot));
+  };
+
   const standingsTournament = tournaments.find((tournament) => tournament.id === standingsTournamentId) ?? tournaments[0];
   const teamStandings = useMemo(() => {
     const tournamentMatches = matches.filter((match) => match.tournamentId === standingsTournament?.id && match.teamAId && match.teamBId);
@@ -307,6 +322,50 @@ export default function Home() {
     }
 
     setNewPlayer({ name: "", group_name: "WSS" });
+  };
+
+  const deletePlayer = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const target = players.find((player) => player.name.trim().toLowerCase() === deletePlayerDraft.name.trim().toLowerCase() && player.group_name === deletePlayerDraft.group_name);
+    if (!target) {
+      setNotice("No player matches that name and group.");
+      return;
+    }
+
+    const targetTeams = teams.filter((team) => team.playerAId === target.id || team.playerBId === target.id);
+    const targetTeamIds = targetTeams.map((team) => team.id);
+    if (hasSupabaseConfig && supabase) {
+      if (targetTeamIds.length) {
+        const { error: matchError } = await supabase.from("matches").delete().or(`teamAId.in.(${targetTeamIds.join(",")}),teamBId.in.(${targetTeamIds.join(",")})`);
+        if (matchError) { setNotice(`Player delete failed: ${matchError.message}`); return; }
+        const { error: teamError } = await supabase.from("teams").delete().in("id", targetTeamIds);
+        if (teamError) { setNotice(`Player delete failed: ${teamError.message}`); return; }
+      }
+      const { error } = await supabase.from("players").delete().eq("id", target.id);
+      if (error) { setNotice(`Player delete failed: ${error.message}`); return; }
+    }
+    setPlayers((current) => current.filter((player) => player.id !== target.id));
+    setTeams((current) => current.filter((team) => !targetTeamIds.includes(team.id)));
+    setMatches((current) => current.filter((match) => !targetTeamIds.includes(match.teamAId ?? "") && !targetTeamIds.includes(match.teamBId ?? "")));
+    setDeletePlayerDraft({ name: "", group_name: "WSS" });
+    setNotice(`${target.name} from ${target.group_name} was deleted.`);
+  };
+
+  const deleteTournament = async (tournament: Tournament) => {
+    const tournamentTeamIds = teams.filter((team) => team.tournamentId === tournament.id).map((team) => team.id);
+    if (hasSupabaseConfig && supabase) {
+      const { error: matchError } = await supabase.from("matches").delete().eq("tournamentId", tournament.id);
+      if (matchError) { setNotice(`League delete failed: ${matchError.message}`); return; }
+      const { error: teamError } = await supabase.from("teams").delete().eq("tournamentId", tournament.id);
+      if (teamError) { setNotice(`League delete failed: ${teamError.message}`); return; }
+      const { error } = await supabase.from("tournaments").delete().eq("id", tournament.id);
+      if (error) { setNotice(`League delete failed: ${error.message}`); return; }
+    }
+    setTournaments((current) => current.filter((item) => item.id !== tournament.id));
+    setTeams((current) => current.filter((team) => !tournamentTeamIds.includes(team.id)));
+    setMatches((current) => current.filter((match) => match.tournamentId !== tournament.id));
+    if (matchDraft.tournamentId === tournament.id) setMatchDraft((current) => ({ ...current, tournamentId: "", teamAId: "", teamBId: "" }));
+    setNotice(`${tournament.name} was deleted.`);
   };
 
   const addTeam = async (event: React.FormEvent) => {
@@ -372,13 +431,10 @@ export default function Home() {
       return;
     }
 
-    const createdPlayers: Player[] = [];
     const createdTeams: Team[] = [];
     requiredPairs.forEach((pair) => {
-      const playerA = { id: createId(), name: pair.player1.trim(), group_name: pair.group === "a" ? createdTournament.group_a : createdTournament.group_b };
-      const playerB = { id: createId(), name: pair.player2.trim(), group_name: playerA.group_name };
-      createdPlayers.push(playerA, playerB);
-      createdTeams.push({ id: createId(), name: `Pair${pair.index + 1}`, playerAId: playerA.id, playerBId: playerB.id, group_name: playerA.group_name, tournamentId: createdTournament.id });
+      const groupName = pair.group === "a" ? createdTournament.group_a : createdTournament.group_b;
+      createdTeams.push({ id: createId(), name: `Pair${pair.index + 1}`, playerAId: pair.player1, playerBId: pair.player2, group_name: groupName, tournamentId: createdTournament.id });
     });
 
     if (hasSupabaseConfig && supabase) {
@@ -387,15 +443,13 @@ export default function Home() {
         setNotice(`League save failed: ${error.message}`);
         return;
       }
-      const { error: playersError } = await supabase.from("players").insert(createdPlayers);
       const { error: teamsError } = await supabase.from("teams").insert(createdTeams);
-      if (playersError || teamsError) {
-        setNotice(`Pair save failed: ${playersError?.message ?? teamsError?.message}`);
+      if (teamsError) {
+        setNotice(`Pair save failed: ${teamsError.message}`);
         return;
       }
     }
     setTournaments((current) => [...current, createdTournament]);
-    setPlayers((current) => [...current, ...createdPlayers]);
     setTeams((current) => [...current, ...createdTeams]);
     setMatchDraft((current) => ({ ...current, tournamentId: createdTournament.id }));
     setTournamentDraft({ name: "", format: "internal", event_date: "", location: "", group_a: "WSS", group_b: "DCSC", teams_per_group: 7 });
@@ -709,6 +763,12 @@ export default function Home() {
                     Save player
                   </button>
                 </form>
+                <form onSubmit={deletePlayer} className="mt-8 space-y-4 border-t border-white/10 pt-6">
+                  <p className="text-[10px] uppercase tracking-[0.25em] text-rose-300">Delete player</p>
+                  <input type="text" value={deletePlayerDraft.name} onChange={(event) => setDeletePlayerDraft((current) => ({ ...current, name: event.target.value }))} placeholder="Player name to delete" className="w-full rounded-xl border border-white/10 bg-[#101316] px-3 py-2.5 text-sm text-white outline-none" />
+                  <select value={deletePlayerDraft.group_name} onChange={(event) => setDeletePlayerDraft((current) => ({ ...current, group_name: event.target.value }))} className="w-full rounded-xl border border-white/10 bg-[#101316] px-3 py-2.5 text-sm text-white outline-none">{groupOptions.map((group) => <option key={group} value={group}>{group}</option>)}</select>
+                  <button type="submit" className="w-full rounded-full border border-rose-400/40 bg-rose-500/10 px-4 py-3 text-sm font-semibold text-rose-200">Delete player</button>
+                </form>
               </div>
 
               <div className="rounded-[26px] border border-[#d9d3d0] bg-[#f9f7f5] p-5 shadow-[0_10px_22px_rgba(0,0,0,0.04)]">
@@ -784,7 +844,7 @@ export default function Home() {
                   <input type="number" min={1} max={20} value={tournamentDraft.teams_per_group} onChange={(event) => { const count = Math.max(1, Math.min(20, Number(event.target.value) || 1)); setTournamentDraft((current) => ({ ...current, teams_per_group: count })); resizePairNames(tournamentDraft.format, count); }} className="w-full rounded-xl border border-white/10 bg-[#101316] px-3 py-2.5 text-sm text-white outline-none" placeholder="Teams per group" />
                   <div className="space-y-3 rounded-2xl border border-white/10 bg-[#101316] p-3">
                     <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Enter tournament pairs</p>
-                    {tournamentPairs.map((pair) => <div key={`${pair.group}-${pair.index}`}><p className="mb-1 text-xs font-semibold text-slate-300">Pair {pair.index + 1} · {pair.group === "a" ? tournamentDraft.group_a : tournamentDraft.group_b}</p><div className="grid grid-cols-2 gap-2"><input value={pair.player1} onChange={(event) => setPairNames((current) => { const next = current.length ? [...current] : tournamentPairs.map((item) => ({ ...item })); next.find((item) => item.group === pair.group && item.index === pair.index)!.player1 = event.target.value; return next; })} placeholder="Player 1" className="w-full rounded-lg border border-white/10 bg-[#171b1f] px-2.5 py-2 text-sm text-white outline-none" /><input value={pair.player2} onChange={(event) => setPairNames((current) => { const next = current.length ? [...current] : tournamentPairs.map((item) => ({ ...item })); next.find((item) => item.group === pair.group && item.index === pair.index)!.player2 = event.target.value; return next; })} placeholder="Player 2" className="w-full rounded-lg border border-white/10 bg-[#171b1f] px-2.5 py-2 text-sm text-white outline-none" /></div></div>)}
+                    {tournamentPairs.map((pair) => <div key={`${pair.group}-${pair.index}`}><p className="mb-1 text-xs font-semibold text-slate-300">Pair {pair.index + 1} · {pair.group === "a" ? tournamentDraft.group_a : tournamentDraft.group_b}</p><div className="grid grid-cols-2 gap-2"><select value={pair.player1} onChange={(event) => setPairNames((current) => { const next = current.length ? [...current] : tournamentPairs.map((item) => ({ ...item })); next.find((item) => item.group === pair.group && item.index === pair.index)!.player1 = event.target.value; return next; })} className="w-full rounded-lg border border-white/10 bg-[#171b1f] px-2.5 py-2 text-sm text-white outline-none"><option value="">Player 1</option>{availablePairPlayers(pair, "player1").map((player) => <option key={player.id} value={player.id}>{player.name}</option>)}</select><select value={pair.player2} onChange={(event) => setPairNames((current) => { const next = current.length ? [...current] : tournamentPairs.map((item) => ({ ...item })); next.find((item) => item.group === pair.group && item.index === pair.index)!.player2 = event.target.value; return next; })} className="w-full rounded-lg border border-white/10 bg-[#171b1f] px-2.5 py-2 text-sm text-white outline-none"><option value="">Player 2</option>{availablePairPlayers(pair, "player2").map((player) => <option key={player.id} value={player.id}>{player.name}</option>)}</select></div></div>)}
                   </div>
                   <button type="submit" className="w-full rounded-full bg-gradient-to-r from-emerald-500 to-cyan-500 px-4 py-3 text-sm font-semibold text-white">Create league</button>
                 </form>
@@ -792,7 +852,7 @@ export default function Home() {
               <div className="rounded-[26px] border border-[#d9d3d0] bg-[#f9f7f5] p-5">
                 <p className="text-[10px] uppercase tracking-[0.25em] text-[#696f77]">Competition calendar</p>
                 <h2 className="mt-2 text-2xl font-semibold text-[#181a1d]">Your leagues</h2>
-                <div className="mt-5 space-y-3">{tournaments.map((tournament) => <div key={tournament.id} className="rounded-[20px] border border-[#e4dfdc] bg-white p-4"><div className="flex items-center justify-between gap-3"><p className="font-semibold text-[#17191d]">{tournament.name}</p><span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] uppercase text-emerald-700">{tournament.format}</span></div><p className="mt-2 text-sm text-[#626972]">{tournament.format === "internal" ? "All enrolled teams play one another." : "Teams play the teams in the opposite group."}</p><p className="mt-2 text-xs text-[#626972]">{tournament.event_date ? new Date(tournament.event_date).toLocaleString() : "Date to be announced"}{tournament.location ? ` · ${tournament.location}` : ""}</p></div>)}</div>
+                <div className="mt-5 space-y-3">{tournaments.map((tournament) => <div key={tournament.id} className="rounded-[20px] border border-[#e4dfdc] bg-white p-4"><div className="flex items-center justify-between gap-3"><p className="font-semibold text-[#17191d]">{tournament.name}</p><span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] uppercase text-emerald-700">{tournament.format}</span></div><p className="mt-2 text-sm text-[#626972]">{tournament.format === "internal" ? "All enrolled teams play one another." : "Teams play the teams in the opposite group."}</p><p className="mt-2 text-xs text-[#626972]">{tournament.event_date ? new Date(tournament.event_date).toLocaleString() : "Date to be announced"}{tournament.location ? ` · ${tournament.location}` : ""}</p><button type="button" onClick={() => { if (window.confirm(`Delete ${tournament.name} and all its pairs and results?`)) void deleteTournament(tournament); }} className="mt-4 rounded-full border border-rose-200 px-3 py-1.5 text-xs font-semibold text-rose-700">Delete league</button></div>)}</div>
               </div>
             </section>
           )}
