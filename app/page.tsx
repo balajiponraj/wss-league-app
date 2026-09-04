@@ -239,7 +239,7 @@ export default function Home() {
 
   const leaderboard = useMemo(() => {
     const tournamentId = matchDraft.tournamentId;
-    return teams.map((team) => {
+    return teams.filter((team) => team.tournamentId === tournamentId).map((team) => {
       const teamMatches = matches.filter((match) => match.tournamentId === tournamentId && (match.teamAId === team.id || match.teamBId === team.id));
       const wins = teamMatches.filter((match) => {
         const teamIsA = match.teamAId === team.id;
