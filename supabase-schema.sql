@@ -36,8 +36,13 @@ create table if not exists public.tournaments (
   name text not null,
   format text not null check (format in ('internal', 'external')),
   status text not null default 'active',
+  event_date timestamptz,
+  location text not null default '',
   created_at timestamptz not null default now()
 );
+
+alter table public.tournaments add column if not exists event_date timestamptz;
+alter table public.tournaments add column if not exists location text not null default '';
 
 alter table public.matches add column if not exists "teamAId" text references public.teams(id);
 alter table public.matches add column if not exists "teamBId" text references public.teams(id);

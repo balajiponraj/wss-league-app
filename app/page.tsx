@@ -16,7 +16,7 @@ type MatchRecord = {
   playerAScore: number;
   playerBScore: number;
   winnerId: string;
-  note: string;
+  note?: string;
   createdAt: string;
   teamAId?: string;
   teamBId?: string;
@@ -37,11 +37,14 @@ type Tournament = {
   format: "internal" | "external";
   status: string;
   created_at: string;
+  event_date: string;
+  location: string;
 };
 
 type TabName = "dashboard" | "players" | "teams" | "tournaments" | "standings" | "matches";
 
 const STORAGE_KEY = "wss-badminton-db-v1";
+const groupOptions = ["WSS", "FFBC", "SW", "SSBC", "DBCC", "DCSC"];
 
 const defaultPlayers: Player[] = [
   { id: "p1", name: "Nattu", group_name: "A" },
@@ -87,16 +90,16 @@ export default function Home() {
   const [teams, setTeams] = useState<Team[]>([]);
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
   const [tab, setTab] = useState<TabName>("dashboard");
-  const [newPlayer, setNewPlayer] = useState({ name: "", group_name: "A" });
+  const [newPlayer, setNewPlayer] = useState({ name: "", group_name: "WSS" });
   const [liveScore, setLiveScore] = useState({ playerA: 0, playerB: 0 });
   const [matchDraft, setMatchDraft] = useState({
     teamAId: "",
     teamBId: "",
     tournamentId: "",
-    note: "Club league",
+    note: "",
   });
   const [teamDraft, setTeamDraft] = useState({ name: "", playerAId: "", playerBId: "", group_name: "A" });
-  const [tournamentDraft, setTournamentDraft] = useState({ name: "", format: "internal" as "internal" | "external" });
+  const [tournamentDraft, setTournamentDraft] = useState({ name: "", format: "internal" as "internal" | "external", event_date: "", location: "" });
   const [standingsTournamentId, setStandingsTournamentId] = useState("");
   const [notice, setNotice] = useState("Local storage mode enabled. Connect Supabase for live database storage.");
 
@@ -193,24 +196,15 @@ export default function Home() {
   }, [players, matches]);
 
   const leaderboard = useMemo(() => {
-    const stats = players.map((player) => {
-      const playerMatches = matches.filter(
-        (match) => match.playerAId === player.id || match.playerBId === player.id,
-      );
-
-      const wins = matches.filter((match) => match.winnerId === player.id).length;
-      const losses = Math.max(playerMatches.length - wins, 0);
-
-      return {
-        ...player,
-        matches: playerMatches.length,
-        wins,
-        losses,
-      };
-    });
-
-    return stats.sort((a, b) => b.wins - a.wins || b.matches - a.matches);
-  }, [players, matches]);
+    const tournamentId = matchDraft.tournamentId;
+    return teams.map((team) => {
+      const teamMatches = matches.filter((match) => match.tournamentId === tournamentId && (match.teamAId === team.id || match.teamBId === team.id));
+      const wins = teamMatches.filter((match) => match.winnerId === team.playerAId || match.winnerId === team.playerBId).length;
+      const pointsFor = teamMatches.reduce((total, match) => total + (match.teamAId === team.id ? match.playerAScore : match.playerBScore), 0);
+      const pointsAgainst = teamMatches.reduce((total, match) => total + (match.teamAId === team.id ? match.playerBScore : match.playerAScore), 0);
+      return { team, matches: teamMatches.length, wins, difference: pointsFor - pointsAgainst };
+    }).sort((a, b) => b.wins - a.wins || b.difference - a.difference);
+  }, [matches, matchDraft.tournamentId, teams]);
 
   const recentMatches = useMemo(
     () =>
@@ -270,7 +264,7 @@ export default function Home() {
     const createdPlayer: Player = {
       id: createId(),
       name: trimmedName,
-      group_name: newPlayer.group_name.trim().toUpperCase() || "A",
+      group_name: newPlayer.group_name,
     };
 
     if (hasSupabaseConfig && supabase) {
@@ -289,7 +283,7 @@ export default function Home() {
       setNotice(`${trimmedName} was added to the player database.`);
     }
 
-    setNewPlayer({ name: "", group_name: "A" });
+    setNewPlayer({ name: "", group_name: "WSS" });
   };
 
   const addTeam = async (event: React.FormEvent) => {
@@ -337,6 +331,8 @@ export default function Home() {
       format: tournamentDraft.format,
       status: "active",
       created_at: new Date().toISOString(),
+      event_date: tournamentDraft.event_date,
+      location: tournamentDraft.location.trim(),
     };
 
     if (hasSupabaseConfig && supabase) {
@@ -348,7 +344,7 @@ export default function Home() {
     }
     setTournaments((current) => [...current, createdTournament]);
     setMatchDraft((current) => ({ ...current, tournamentId: createdTournament.id }));
-    setTournamentDraft({ name: "", format: "internal" });
+    setTournamentDraft({ name: "", format: "internal", event_date: "", location: "" });
     setNotice(`${createdTournament.name} created as an ${createdTournament.format} tournament.`);
   };
 
@@ -374,7 +370,7 @@ export default function Home() {
       playerAScore: liveScore.playerA,
       playerBScore: liveScore.playerB,
       winnerId,
-      note: matchDraft.note.trim() || "Match recorded",
+      note: undefined,
       createdAt: new Date().toISOString(),
       teamAId: teamA.id,
       teamBId: teamB.id,
@@ -398,7 +394,6 @@ export default function Home() {
     }
 
     setLiveScore({ playerA: 0, playerB: 0 });
-    setMatchDraft((current) => ({ ...current, note: "Club league" }));
   };
 
   return (
@@ -494,7 +489,7 @@ export default function Home() {
                   <p className="text-[10px] uppercase tracking-[0.24em] text-[#676d75]">Leader</p>
                   <div className="mt-4 flex items-end justify-between">
                     <span className="text-2xl font-bold text-[#17191d]">
-                      {leaderboard[0]?.name ?? "-"}
+                      {leaderboard[0] ? teamLabel(leaderboard[0].team) : "-"}
                     </span>
                     <span className="h-2.5 w-2.5 rounded-full bg-amber-500" />
                   </div>
@@ -506,16 +501,14 @@ export default function Home() {
                   <div className="mb-4 flex items-center justify-between">
                     <div>
                       <p className="text-[10px] uppercase tracking-[0.25em] text-slate-400">Live scoring</p>
-                      <h2 className="mt-1 text-2xl font-semibold">Singles match</h2>
+                      <h2 className="mt-1 text-2xl font-semibold">{selectedTournament?.name ?? "Select a tournament"}</h2>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setLiveScore({ playerA: 0, playerB: 0 })}
-                      className="rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-xs uppercase tracking-[0.18em] text-slate-200"
-                    >
-                      Reset
-                    </button>
                   </div>
+
+                  <select value={matchDraft.tournamentId} onChange={(event) => setMatchDraft((current) => ({ ...current, tournamentId: event.target.value, teamBId: "" }))} className="mb-4 w-full rounded-xl border border-white/10 bg-[#121417] px-3 py-2 text-sm text-white outline-none">
+                    <option value="">Select tournament</option>
+                    {tournaments.map((tournament) => <option key={tournament.id} value={tournament.id}>{tournament.name}</option>)}
+                  </select>
 
                   <div className="grid gap-3 md:grid-cols-2">
                     <div className="rounded-[20px] border border-white/10 bg-white/5 p-4">
@@ -537,14 +530,7 @@ export default function Home() {
                       </select>
 
                       <div className="mt-5 flex items-center justify-between">
-                        <span className="text-5xl font-bold">{liveScore.playerA}</span>
-                        <button
-                          type="button"
-                          onClick={() => setLiveScore((current) => ({ ...current, playerA: current.playerA + 1 }))}
-                          className="rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-white"
-                        >
-                          +1
-                        </button>
+                        <input type="number" min={0} value={liveScore.playerA} onChange={(event) => setLiveScore((current) => ({ ...current, playerA: Number(event.target.value) || 0 }))} className="w-28 rounded-xl border border-white/10 bg-[#121417] px-3 py-2 text-4xl font-bold text-white outline-none" />
                       </div>
                     </div>
 
@@ -567,31 +553,9 @@ export default function Home() {
                       </select>
 
                       <div className="mt-5 flex items-center justify-between">
-                        <span className="text-5xl font-bold">{liveScore.playerB}</span>
-                        <button
-                          type="button"
-                          onClick={() => setLiveScore((current) => ({ ...current, playerB: current.playerB + 1 }))}
-                          className="rounded-full bg-sky-500 px-4 py-2 text-sm font-semibold text-white"
-                        >
-                          +1
-                        </button>
+                        <input type="number" min={0} value={liveScore.playerB} onChange={(event) => setLiveScore((current) => ({ ...current, playerB: Number(event.target.value) || 0 }))} className="w-28 rounded-xl border border-white/10 bg-[#121417] px-3 py-2 text-4xl font-bold text-white outline-none" />
                       </div>
                     </div>
-                  </div>
-
-                  <div className="mt-4 rounded-[18px] border border-white/10 bg-[#101316] p-3">
-                    <label className="mb-2 block text-xs uppercase tracking-[0.2em] text-slate-400">
-                      Match note
-                    </label>
-                    <input
-                      type="text"
-                      value={matchDraft.note}
-                      onChange={(event) =>
-                        setMatchDraft((current) => ({ ...current, note: event.target.value }))
-                      }
-                      className="w-full rounded-xl border border-white/10 bg-[#171b1f] px-3 py-2 text-sm text-white outline-none"
-                      placeholder="League / practice / final"
-                    />
                   </div>
 
                   <button
@@ -612,9 +576,9 @@ export default function Home() {
                   </div>
 
                   <div className="space-y-3">
-                    {leaderboard.map((player, index) => (
+                    {leaderboard.map((entry, index) => (
                       <div
-                        key={player.id}
+                        key={entry.team.id}
                         className="flex items-center justify-between rounded-[18px] border border-[#e5e0dd] bg-white p-3"
                       >
                         <div className="flex items-center gap-3">
@@ -622,12 +586,12 @@ export default function Home() {
                             #{index + 1}
                           </div>
                           <div>
-                            <p className="font-semibold text-[#17191d]">{player.name}</p>
-                            <p className="text-xs text-[#666d75]">Group {player.group_name}</p>
+                            <p className="font-semibold text-[#17191d]">{teamLabel(entry.team)}</p>
+                            <p className="text-xs text-[#666d75]">{entry.matches} matches · +{entry.difference} difference</p>
                           </div>
                         </div>
                         <div className="text-right">
-                          <p className="text-lg font-bold text-[#17191d]">{player.wins}</p>
+                          <p className="text-lg font-bold text-[#17191d]">{entry.wins}</p>
                           <p className="text-[10px] uppercase tracking-[0.18em] text-[#6b7077]">wins</p>
                         </div>
                       </div>
@@ -662,13 +626,13 @@ export default function Home() {
                     <label className="mb-2 block text-xs uppercase tracking-[0.2em] text-slate-400">
                       Group name
                     </label>
-                    <input
-                      type="text"
+                    <select
                       value={newPlayer.group_name}
                       onChange={(event) => setNewPlayer((current) => ({ ...current, group_name: event.target.value }))}
                       className="w-full rounded-xl border border-white/10 bg-[#101316] px-3 py-2.5 text-sm text-white outline-none"
-                      placeholder="A or B"
-                    />
+                    >
+                      {groupOptions.map((group) => <option key={group} value={group}>{group}</option>)}
+                    </select>
                   </div>
 
                   <button
@@ -740,6 +704,8 @@ export default function Home() {
                 <h2 className="mt-2 text-2xl font-semibold">Create a tournament</h2>
                 <form onSubmit={addTournament} className="mt-5 space-y-4">
                   <input value={tournamentDraft.name} onChange={(event) => setTournamentDraft((current) => ({ ...current, name: event.target.value }))} placeholder="WSS Internal League" className="w-full rounded-xl border border-white/10 bg-[#101316] px-3 py-2.5 text-sm text-white outline-none" />
+                  <input type="datetime-local" value={tournamentDraft.event_date} onChange={(event) => setTournamentDraft((current) => ({ ...current, event_date: event.target.value }))} className="w-full rounded-xl border border-white/10 bg-[#101316] px-3 py-2.5 text-sm text-white outline-none" />
+                  <input value={tournamentDraft.location} onChange={(event) => setTournamentDraft((current) => ({ ...current, location: event.target.value }))} placeholder="Location" className="w-full rounded-xl border border-white/10 bg-[#101316] px-3 py-2.5 text-sm text-white outline-none" />
                   <select value={tournamentDraft.format} onChange={(event) => setTournamentDraft((current) => ({ ...current, format: event.target.value as "internal" | "external" }))} className="w-full rounded-xl border border-white/10 bg-[#101316] px-3 py-2.5 text-sm text-white outline-none">
                     <option value="internal">Internal: every team plays every other WSS team</option>
                     <option value="external">External: Group A plays Group B</option>
@@ -750,7 +716,7 @@ export default function Home() {
               <div className="rounded-[26px] border border-[#d9d3d0] bg-[#f9f7f5] p-5">
                 <p className="text-[10px] uppercase tracking-[0.25em] text-[#696f77]">Competition calendar</p>
                 <h2 className="mt-2 text-2xl font-semibold text-[#181a1d]">Your leagues</h2>
-                <div className="mt-5 space-y-3">{tournaments.map((tournament) => <div key={tournament.id} className="rounded-[20px] border border-[#e4dfdc] bg-white p-4"><div className="flex items-center justify-between gap-3"><p className="font-semibold text-[#17191d]">{tournament.name}</p><span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] uppercase text-emerald-700">{tournament.format}</span></div><p className="mt-2 text-sm text-[#626972]">{tournament.format === "internal" ? "All enrolled teams play one another." : "Teams play the teams in the opposite group."}</p></div>)}</div>
+                <div className="mt-5 space-y-3">{tournaments.map((tournament) => <div key={tournament.id} className="rounded-[20px] border border-[#e4dfdc] bg-white p-4"><div className="flex items-center justify-between gap-3"><p className="font-semibold text-[#17191d]">{tournament.name}</p><span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] uppercase text-emerald-700">{tournament.format}</span></div><p className="mt-2 text-sm text-[#626972]">{tournament.format === "internal" ? "All enrolled teams play one another." : "Teams play the teams in the opposite group."}</p><p className="mt-2 text-xs text-[#626972]">{tournament.event_date ? new Date(tournament.event_date).toLocaleString() : "Date to be announced"}{tournament.location ? ` · ${tournament.location}` : ""}</p></div>)}</div>
               </div>
             </section>
           )}
@@ -859,20 +825,6 @@ export default function Home() {
                         className="w-full rounded-xl border border-white/10 bg-[#171b1f] px-3 py-2 text-sm text-white outline-none"
                       />
                     </div>
-                  </div>
-
-                  <div>
-                    <label className="mb-2 block text-xs uppercase tracking-[0.2em] text-slate-400">
-                      Notes
-                    </label>
-                    <input
-                      type="text"
-                      value={matchDraft.note}
-                      onChange={(event) =>
-                        setMatchDraft((current) => ({ ...current, note: event.target.value }))
-                      }
-                      className="w-full rounded-xl border border-white/10 bg-[#101316] px-3 py-2.5 text-sm text-white outline-none"
-                    />
                   </div>
 
                   <button

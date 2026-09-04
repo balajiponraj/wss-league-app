@@ -1,0 +1,1 @@
+truncate table public.matches, public.teams, public.tournaments, public.players restart identity cascade;

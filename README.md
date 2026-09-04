@@ -53,3 +53,7 @@ Never commit `.env.local` or share its values. The `.gitignore` file already exc
 For a personal or team project, the default Vercel Hobby plan is typically sufficient for initial hosting without paying for a plan.
 
 The initial policies allow anyone with the public app to read and add WSS players and match results. Add Supabase Authentication before using the app outside the team.
+
+## Clear existing competition data
+
+To start fresh, open Supabase **SQL Editor**, paste the contents of `clear-wss-data.sql`, and click **Run**. This permanently deletes all players, teams, tournaments, and match results while keeping the tables and policies. Only run it when you are ready to erase the current data.
