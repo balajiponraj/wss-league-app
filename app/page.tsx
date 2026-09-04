@@ -21,6 +21,8 @@ type MatchRecord = {
   teamAId?: string;
   teamBId?: string;
   tournamentId?: string;
+  stage?: string;
+  bracketKey?: string;
 };
 
 type Team = {
@@ -47,7 +49,7 @@ type Tournament = {
 
 type PairInput = { group: "a" | "b"; index: number; player1: string; player2: string };
 
-type TabName = "dashboard" | "players" | "teams" | "tournaments" | "standings" | "matches";
+type TabName = "dashboard" | "players" | "teams" | "tournaments" | "standings" | "playoffs" | "matches";
 
 const STORAGE_KEY = "wss-badminton-db-v1";
 const groupOptions = ["WSS", "FFBC", "SW", "SSBC", "DBCC", "DCSC"];
@@ -145,6 +147,8 @@ export default function Home() {
   const [editingTournamentId, setEditingTournamentId] = useState<string | null>(null);
   const [editingMatchId, setEditingMatchId] = useState<string | null>(null);
   const [fixtureTeamFilter, setFixtureTeamFilter] = useState("");
+  const [playoffTournamentId, setPlayoffTournamentId] = useState("");
+  const [playoffScores, setPlayoffScores] = useState<Record<string, { a: string; b: string }>>({});
   const [standingsTournamentId, setStandingsTournamentId] = useState("");
   const [notice, setNotice] = useState("Local storage mode enabled. Connect Supabase for live database storage.");
 
@@ -349,6 +353,7 @@ export default function Home() {
   };
 
   const standingsTournament = tournaments.find((tournament) => tournament.id === standingsTournamentId) ?? tournaments[0];
+  const playoffTournament = tournaments.find((tournament) => tournament.id === playoffTournamentId) ?? tournaments[0];
   const teamStandings = useMemo(() => {
     const tournamentMatches = matches.filter((match) => match.tournamentId === standingsTournament?.id && match.teamAId && match.teamBId);
     return teams.filter((team) => team.tournamentId === standingsTournament?.id).map((team) => {
@@ -364,6 +369,51 @@ export default function Home() {
   }, [matches, standingsTournament, teams]);
 
   const playoffTeams = teamStandings.slice(0, standingsTournament?.format === "external" ? 8 : 4);
+
+  const playoffStandings = useMemo(() => {
+    if (!playoffTournament) return [];
+    return teams.filter((team) => team.tournamentId === playoffTournament.id).map((team) => {
+      const games = matches.filter((match) => match.tournamentId === playoffTournament.id && !match.stage && (match.teamAId === team.id || match.teamBId === team.id));
+      const wins = games.filter((match) => match.teamAId === team.id ? match.playerAScore > match.playerBScore : match.playerBScore > match.playerAScore).length;
+      const pf = games.reduce((sum, match) => sum + (match.teamAId === team.id ? match.playerAScore : match.playerBScore), 0);
+      const pa = games.reduce((sum, match) => sum + (match.teamAId === team.id ? match.playerBScore : match.playerAScore), 0);
+      return { team, wins, difference: pf - pa };
+    }).sort((a, b) => b.wins - a.wins || b.difference - a.difference);
+  }, [matches, playoffTournament, teams]);
+
+  const playoffMatch = (key: string, teamA?: Team, teamB?: Team) => {
+    const saved = matches.find((match) => match.tournamentId === playoffTournament?.id && match.stage && match.bracketKey === key);
+    return { key, teamA, teamB, match: saved };
+  };
+
+  const winnerOf = (key: string) => {
+    const match = matches.find((item) => item.tournamentId === playoffTournament?.id && item.bracketKey === key);
+    if (!match) return undefined;
+    return match.teamAId && match.playerAScore > match.playerBScore ? teamMap[match.teamAId] : match.teamBId ? teamMap[match.teamBId] : undefined;
+  };
+
+  const loserOf = (key: string) => {
+    const match = matches.find((item) => item.tournamentId === playoffTournament?.id && item.bracketKey === key);
+    if (!match || match.playerAScore === match.playerBScore) return undefined;
+    return match.teamAId && match.playerAScore < match.playerBScore ? teamMap[match.teamAId] : match.teamBId ? teamMap[match.teamBId] : undefined;
+  };
+
+  const playoffBracket = useMemo(() => {
+    if (!playoffTournament) return { columns: [], podium: [] as (Team | undefined)[] };
+    if (playoffTournament.format === "internal") {
+      const q1 = playoffMatch("q1", playoffStandings[0]?.team, playoffStandings[1]?.team);
+      const elim = playoffMatch("eliminator", playoffStandings[2]?.team, playoffStandings[3]?.team);
+      const q2 = playoffMatch("q2", winnerOf("eliminator"), playoffStandings[1]?.team);
+      const final = playoffMatch("final", winnerOf("q1"), winnerOf("q2"));
+      return { columns: [[q1, elim], [q2], [final]], podium: [winnerOf("final"), winnerOf("q1"), winnerOf("q2")] };
+    }
+    const q = [0, 1, 2, 3].map((index) => playoffMatch(`qf${index + 1}`, playoffStandings[index]?.team, playoffStandings[7 - index]?.team));
+    const sf1 = playoffMatch("sf1", winnerOf("qf1"), winnerOf("qf2"));
+    const sf2 = playoffMatch("sf2", winnerOf("qf3"), winnerOf("qf4"));
+    const final = playoffMatch("final", winnerOf("sf1"), winnerOf("sf2"));
+    const bronze = playoffMatch("bronze", loserOf("sf1"), loserOf("sf2"));
+    return { columns: [q, [sf1, sf2], [final, bronze]], podium: [winnerOf("final"), loserOf("final"), winnerOf("bronze")] };
+  }, [matches, playoffStandings, playoffTournament, teamMap]);
 
   const addPlayer = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -463,6 +513,30 @@ export default function Home() {
     setEditingMatchId(fixture.match?.id ?? null);
     setMatchDraft((current) => ({ ...current, teamAId: fixture.teamA.id, teamBId: fixture.teamB.id }));
     setLiveScore({ playerA: fixture.match ? String(fixture.teamAScore) : "", playerB: fixture.match ? String(fixture.teamBScore) : "" });
+  };
+
+  const savePlayoffResult = async (fixture: { key: string; teamA?: Team; teamB?: Team; match?: MatchRecord }) => {
+    if (!fixture.teamA || !fixture.teamB || !playoffTournament) {
+      setNotice("This playoff match is waiting for the earlier round to finish.");
+      return;
+    }
+    const score = playoffScores[fixture.key] ?? { a: "", b: "" };
+    const playerAScore = Number(score.a);
+    const playerBScore = Number(score.b);
+    if (!score.a || !score.b || playerAScore === playerBScore) {
+      setNotice("Enter two different scores for the playoff match.");
+      return;
+    }
+    const record = { id: fixture.match?.id ?? createId(), playerAId: fixture.teamA.playerAId, playerBId: fixture.teamB.playerAId, playerAScore, playerBScore, winnerId: playerAScore > playerBScore ? fixture.teamA.playerAId : fixture.teamB.playerAId, note: fixture.key, createdAt: new Date().toISOString(), teamAId: fixture.teamA.id, teamBId: fixture.teamB.id, tournamentId: playoffTournament.id, stage: "playoff", bracketKey: fixture.key };
+    if (hasSupabaseConfig && supabase) {
+      const result = fixture.match ? await supabase.from("matches").update(record).eq("id", fixture.match.id) : await supabase.from("matches").insert([record]);
+      if (result.error) { setNotice(`Playoff save failed: ${result.error.message}`); return; }
+      await refreshDatabase();
+    } else {
+      setMatches((current) => fixture.match ? current.map((match) => match.id === record.id ? record : match) : [...current, record]);
+    }
+    setPlayoffScores((current) => ({ ...current, [fixture.key]: { a: "", b: "" } }));
+    setNotice(`Playoff result saved for ${teamLabel(fixture.teamA)} vs ${teamLabel(fixture.teamB)}.`);
   };
 
   const clearResults = async () => {
@@ -696,6 +770,7 @@ export default function Home() {
                 { key: "players", label: "Players" },
                 { key: "tournaments", label: "Leagues" },
                 { key: "standings", label: "Standings" },
+                { key: "playoffs", label: "Playoff bracket" },
               ].map((item) => (
                 <button
                   key={item.key}
@@ -1011,6 +1086,14 @@ export default function Home() {
                   {standingsTournament.format === "internal" ? <><div className="rounded-2xl border border-white/10 bg-white/5 p-4"><p className="text-xs uppercase tracking-[0.16em] text-emerald-300">Qualifier 1</p><p className="mt-3 font-semibold">1. {playoffTeams[0] ? teamLabel(playoffTeams[0].team) : "TBD"} vs 2. {playoffTeams[1] ? teamLabel(playoffTeams[1].team) : "TBD"}</p><p className="mt-3 text-sm text-slate-300">Winner goes directly to the final.</p></div><div className="rounded-2xl border border-white/10 bg-white/5 p-4"><p className="text-xs uppercase tracking-[0.16em] text-amber-300">Eliminator</p><p className="mt-3 font-semibold">3. {playoffTeams[2] ? teamLabel(playoffTeams[2].team) : "TBD"} vs 4. {playoffTeams[3] ? teamLabel(playoffTeams[3].team) : "TBD"}</p><p className="mt-3 text-sm text-slate-300">Winner advances to Qualifier 2.</p></div><div className="rounded-2xl border border-white/10 bg-white/5 p-4"><p className="text-xs uppercase tracking-[0.16em] text-sky-300">Final path</p><p className="mt-3 font-semibold">Qualifier 2 vs Qualifier 1 winner</p><p className="mt-3 text-sm text-slate-300">Qualifier 2 winner reaches the final. Bronze goes to the Qualifier 2 loser.</p></div></> : <><div className="rounded-2xl border border-white/10 bg-white/5 p-4"><p className="text-xs uppercase tracking-[0.16em] text-emerald-300">Quarter-finals</p><p className="mt-3 font-semibold">1 vs 8<br />2 vs 7<br />3 vs 6<br />4 vs 5</p></div><div className="rounded-2xl border border-white/10 bg-white/5 p-4"><p className="text-xs uppercase tracking-[0.16em] text-amber-300">Semi-finals</p><p className="mt-3 font-semibold">Winner (1/8) vs Winner (2/7)<br /><br />Winner (3/6) vs Winner (4/5)</p></div><div className="rounded-2xl border border-white/10 bg-white/5 p-4"><p className="text-xs uppercase tracking-[0.16em] text-sky-300">Final & bronze</p><p className="mt-3 font-semibold">Semi-final winners play final</p><p className="mt-3 text-sm text-slate-300">Final winner: gold. Final loser: silver. Semi-final losers play the bronze match.</p></div></>}
                 </div></div>
               </>}
+            </section>
+          )}
+
+          {tab === "playoffs" && (
+            <section className="space-y-6">
+              <div className="rounded-[26px] border border-[#d9d3d0] bg-[#191c20] p-5 text-white"><p className="text-[10px] uppercase tracking-[0.25em] text-slate-400">Knockout competition</p><div className="flex items-center justify-between gap-4"><h2 className="mt-2 text-2xl font-semibold">Playoff bracket</h2><select value={playoffTournament?.id ?? ""} onChange={(event) => setPlayoffTournamentId(event.target.value)} className="rounded-xl border border-white/10 bg-[#101316] px-3 py-2 text-sm text-white"><option value="">Select league</option>{tournaments.map((tournament) => <option key={tournament.id} value={tournament.id}>{tournament.name}</option>)}</select></div><p className="mt-3 text-sm text-slate-300">{playoffTournament?.format === "internal" ? "Top 4: Qualifier 1, Eliminator, Qualifier 2, Final." : "Top 8: Quarter-finals, semi-finals, final, and bronze match."}</p></div>
+              {playoffTournament && <div className="overflow-x-auto rounded-[26px] border border-[#d9d3d0] bg-[#182f4d] p-5"><div className="grid min-w-[900px] grid-cols-3 gap-4">{playoffBracket.columns.map((column, columnIndex) => <div key={columnIndex} className="space-y-4"><p className="px-2 text-xs font-semibold uppercase tracking-[0.18em] text-amber-200">{playoffTournament.format === "external" ? ["Quarter-finals", "Semi-finals", "Final & bronze"][columnIndex] : ["Qualifier 1 / Eliminator", "Qualifier 2", "Final"][columnIndex]}</p>{column.map((fixture) => <div key={fixture.key} className="rounded-xl border border-[#d8c58a]/60 bg-white p-3 text-[#18212b]"><p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#6b7279]">{fixture.key}</p><p className="mt-2 text-sm font-semibold">{fixture.teamA ? teamLabel(fixture.teamA) : "Waiting for previous round"}</p><p className="text-sm font-semibold">{fixture.teamB ? teamLabel(fixture.teamB) : "Waiting for previous round"}</p><div className="mt-3 grid grid-cols-2 gap-2"><input type="text" inputMode="numeric" placeholder="Score" value={playoffScores[fixture.key]?.a ?? (fixture.match ? String(fixture.match.playerAScore) : "")} onChange={(event) => setPlayoffScores((current) => ({ ...current, [fixture.key]: { a: event.target.value.replace(/\D/g, ""), b: current[fixture.key]?.b ?? "" } }))} className="w-full rounded-lg border border-[#d8dfe4] px-2 py-1.5 text-sm" /><input type="text" inputMode="numeric" placeholder="Score" value={playoffScores[fixture.key]?.b ?? (fixture.match ? String(fixture.match.playerBScore) : "")} onChange={(event) => setPlayoffScores((current) => ({ ...current, [fixture.key]: { a: current[fixture.key]?.a ?? "", b: event.target.value.replace(/\D/g, "") } }))} className="w-full rounded-lg border border-[#d8dfe4] px-2 py-1.5 text-sm" /></div>{fixture.teamA && fixture.teamB && <button type="button" onClick={() => void savePlayoffResult(fixture)} className="mt-3 w-full rounded-lg bg-[#c9962d] px-3 py-2 text-xs font-semibold text-white">{fixture.match ? "Update result" : "Save result"}</button>}</div>)}</div>)}</div></div>}
+              {playoffTournament && <div className="grid gap-3 md:grid-cols-3"><div className="rounded-xl bg-slate-300 p-5 text-center"><p className="text-xs uppercase tracking-[0.18em]">Silver</p><p className="mt-3 font-bold">{playoffBracket.podium[1] ? teamLabel(playoffBracket.podium[1]) : "TBD"}</p></div><div className="rounded-xl bg-amber-400 p-5 text-center"><p className="text-xs uppercase tracking-[0.18em]">Gold</p><p className="mt-3 font-bold">{playoffBracket.podium[0] ? teamLabel(playoffBracket.podium[0]) : "TBD"}</p></div><div className="rounded-xl bg-orange-700 p-5 text-center text-white"><p className="text-xs uppercase tracking-[0.18em]">Bronze</p><p className="mt-3 font-bold">{playoffBracket.podium[2] ? teamLabel(playoffBracket.podium[2]) : "TBD"}</p></div></div>}
             </section>
           )}
 

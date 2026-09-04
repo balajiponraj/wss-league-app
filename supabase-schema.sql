@@ -52,6 +52,8 @@ alter table public.tournaments add column if not exists location text not null d
 alter table public.matches add column if not exists "teamAId" text references public.teams(id);
 alter table public.matches add column if not exists "teamBId" text references public.teams(id);
 alter table public.matches add column if not exists "tournamentId" text references public.tournaments(id);
+alter table public.matches add column if not exists stage text not null default 'round_robin';
+alter table public.matches add column if not exists "bracketKey" text;
 
 alter table public.players enable row level security;
 alter table public.matches enable row level security;

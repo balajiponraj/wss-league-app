@@ -6,6 +6,10 @@ alter table public.tournaments
 alter table public.teams
   add column if not exists "tournamentId" text references public.tournaments(id);
 
+alter table public.matches
+  add column if not exists stage text not null default 'round_robin',
+  add column if not exists "bracketKey" text;
+
 drop policy if exists "WSS matches can be updated" on public.matches;
 create policy "WSS matches can be updated"
   on public.matches for update
