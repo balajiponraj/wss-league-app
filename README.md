@@ -57,3 +57,5 @@ The initial policies allow anyone with the public app to read and add WSS player
 ## Clear existing competition data
 
 To start fresh, open Supabase **SQL Editor**, paste the contents of `clear-wss-data.sql`, and click **Run**. This permanently deletes all players, teams, tournaments, and match results while keeping the tables and policies. Only run it when you are ready to erase the current data.
+
+If tournament creation says `event_date` is missing, run `supabase-migration-schedule.sql` in the Supabase SQL Editor. This adds the schedule columns without deleting any existing data.
