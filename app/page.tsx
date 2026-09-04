@@ -904,7 +904,7 @@ export default function Home() {
                   key={item.key}
                   type="button"
                   onClick={() => setTab(item.key as TabName)}
-                  className={`rounded-full px-4 py-2 text-sm font-medium transition ${
+                  className={`nav-pill rounded-full px-4 py-2 text-sm font-medium transition ${
                     tab === item.key
                       ? "bg-[#f7c62f] text-[#071a2d] shadow-md"
                       : "bg-[#f7f8fa] text-[#18324f] hover:bg-[#fce6a0]"
