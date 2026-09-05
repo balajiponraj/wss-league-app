@@ -288,7 +288,10 @@ export default function Home() {
       setTournaments(nextTournaments);
       if (groupsData?.length) setGroups(groupsData as Group[]);
       setTeamDraft((current) => ({ ...current, playerAId: current.playerAId || nextPlayers[0]?.id || "", playerBId: current.playerBId || nextPlayers[1]?.id || "" }));
-      setMatchDraft((current) => ({ ...current, tournamentId: current.tournamentId || "", teamAId: "", teamBId: "" }));
+      const firstTournamentId = nextTournaments[0]?.id ?? "";
+      setMatchDraft((current) => ({ ...current, tournamentId: current.tournamentId || firstTournamentId, teamAId: "", teamBId: "" }));
+      setPlayoffTournamentId((current) => current || firstTournamentId);
+      setStandingsTournamentId((current) => current || firstTournamentId);
       setNotice("Connected to Supabase. Live sync is active.");
     };
 
@@ -462,7 +465,9 @@ export default function Home() {
 
   const playoffMatch = (key: string, teamA?: Team, teamB?: Team) => {
     const saved = matches.find((match) => match.tournamentId === playoffTournament?.id && match.bracketKey === key);
-    return { key, teamA, teamB, match: saved, teamAScore: saved?.playerAScore, teamBScore: saved?.playerBScore };
+    const resolvedTeamA = teamA ?? (saved?.teamAId ? teamMap[saved.teamAId] : undefined);
+    const resolvedTeamB = teamB ?? (saved?.teamBId ? teamMap[saved.teamBId] : undefined);
+    return { key, teamA: resolvedTeamA, teamB: resolvedTeamB, match: saved, teamAScore: saved?.playerAScore, teamBScore: saved?.playerBScore };
   };
 
   const winnerOf = (key: string) => {
@@ -519,15 +524,23 @@ export default function Home() {
   const hasPlayoffQ2Match = Boolean(playoffTournament && matches.some((m) => m.tournamentId === playoffTournament.id && m.bracketKey === "q2"));
 
   const isPlayoffTournamentCompleted = Boolean(playoffTournament && playoffTournament.status === "completed");
+  const isSelectedTournamentCompleted = Boolean(selectedTournament && selectedTournament.status === "completed");
+  const isTournamentCompleted = Boolean(
+    isPlayoffTournamentCompleted ||
+    isSelectedTournamentCompleted ||
+    (selectedTournament && (selectedTournament.format === "external" ? (hasPlayoffFinalMatch && hasPlayoffBronzeMatch) : hasPlayoffFinalMatch)) ||
+    (playoffTournament && (playoffTournament.format === "external" ? (hasPlayoffFinalMatch && hasPlayoffBronzeMatch) : hasPlayoffFinalMatch))
+  );
+
   const canCompleteTournament = Boolean(
     playoffTournament &&
-    !isPlayoffTournamentCompleted &&
+    !isTournamentCompleted &&
     (playoffTournament.format === "external" ? (hasPlayoffFinalMatch && hasPlayoffBronzeMatch) : hasPlayoffFinalMatch)
   );
 
   const isPlayoffFixtureLocked = (fixtureKey: string) => {
     if (!playoffTournament) return false;
-    if (isPlayoffTournamentCompleted) return true;
+    if (isTournamentCompleted) return true;
 
     if (playoffTournament.format === "external") {
       if (fixtureKey.startsWith("qf")) {
@@ -537,7 +550,7 @@ export default function Home() {
         return hasPlayoffFinalMatch || hasPlayoffBronzeMatch;
       }
       if (fixtureKey === "final" || fixtureKey === "bronze") {
-        return isPlayoffTournamentCompleted;
+        return isTournamentCompleted;
       }
     } else {
       if (fixtureKey === "q1" || fixtureKey === "eliminator") {
@@ -547,26 +560,22 @@ export default function Home() {
         return hasPlayoffFinalMatch;
       }
       if (fixtureKey === "final") {
-        return isPlayoffTournamentCompleted;
+        return isTournamentCompleted;
       }
     }
     return false;
   };
 
-  const playoffResultOrder = playoffTournament?.format === "external"
+  const playoffResultOrder = (selectedTournament ?? playoffTournament)?.format === "external"
     ? ["final", "bronze", "sf1", "sf2", "qf1", "qf2", "qf3", "qf4"]
     : ["final", "q2", "q1", "eliminator"];
-  const dashboardPlayoffResults = playoffTournament
+  const dashboardPlayoffResults = (selectedTournament ?? playoffTournament)
     ? playoffResultOrder.map((key) => {
         const fixture = playoffBracket.columns.flat().find((item) => item.key === key);
         return fixture?.match ? fixture : undefined;
       }).filter((fixture): fixture is NonNullable<typeof fixture> => Boolean(fixture))
     : [];
-  const playoffComplete = Boolean(
-    isPlayoffTournamentCompleted ||
-    (selectedTournament && selectedTournament.status === "completed") ||
-    (playoffRoundRobinComplete && playoffTournament && playoffResultOrder.every((key) => playoffBracket.columns.flat().some((fixture) => fixture.key === key && fixture.match)))
-  );
+  const playoffComplete = isTournamentCompleted;
 
   const deletablePlayers = players.filter((player) => player.group_name === deletePlayerDraft.group_name);
 
@@ -1059,7 +1068,7 @@ export default function Home() {
 
           {tab === "dashboard" && (
             <>
-              <select value={matchDraft.tournamentId} onChange={(event) => selectTournament(event.target.value)} className="w-full rounded-xl border border-[#d7a91d]/50 bg-[#0d2b4a] px-4 py-3 text-sm font-semibold text-white outline-none"><option value="">Select tournament</option>{visibleTournaments.map((tournament) => <option key={tournament.id} value={tournament.id}>{tournament.name}</option>)}</select>
+              <select value={matchDraft.tournamentId} onChange={(event) => selectTournament(event.target.value)} className="w-full rounded-xl border border-[#d7a91d]/50 bg-[#0d2b4a] px-4 py-3 text-sm font-semibold text-white outline-none"><option value="">Select tournament</option>{visibleTournaments.map((tournament) => <option key={tournament.id} value={tournament.id}>{tournament.name}{tournament.status === "completed" ? " ✓ (Completed)" : ""}</option>)}</select>
               {playoffComplete && <section className="space-y-6 rounded-[26px] border border-[#d7a91d]/50 bg-[#0d2b4a] p-5 text-white shadow-[0_20px_45px_rgba(0,0,0,0.26)]"><div className="border-b border-[#f7c62f]/30 pb-5 text-center"><p className="text-xs font-semibold uppercase tracking-[0.3em] text-[#f7c62f]">Tournament champion</p><p className="mt-2 text-3xl">🥇</p><h2 className="text-2xl font-bold text-[#f7c62f]">{playoffBracket.podium[0] ? teamLabel(playoffBracket.podium[0]) : "Champion"}</h2><p className="mt-2 text-sm text-slate-300">{playoffTournament?.name}</p></div><div className="grid gap-3 md:grid-cols-3"><div className="rounded-xl border border-[#e3b821] bg-[#f7c62f] p-4 text-center text-[#071a2d]"><p className="text-2xl">🥇</p><p className="text-xs font-semibold uppercase tracking-[0.18em]">Gold</p><p className="mt-2 font-bold">{playoffBracket.podium[0] ? teamLabel(playoffBracket.podium[0]) : "TBD"}</p></div><div className="rounded-xl border border-slate-300/50 bg-slate-200 p-4 text-center text-[#142b45]"><p className="text-2xl">🥈</p><p className="text-xs font-semibold uppercase tracking-[0.18em]">Silver</p><p className="mt-2 font-bold">{playoffBracket.podium[1] ? teamLabel(playoffBracket.podium[1]) : "TBD"}</p></div><div className="rounded-xl border border-[#a9683d] bg-[#ad6b43] p-4 text-center text-white"><p className="text-2xl">🥉</p><p className="text-xs font-semibold uppercase tracking-[0.18em]">Bronze</p><p className="mt-2 font-bold">{playoffBracket.podium[2] ? teamLabel(playoffBracket.podium[2]) : "TBD"}</p></div></div><div className="grid gap-3 md:grid-cols-3">{dashboardPlayoffResults.map((fixture) => <div key={fixture.key} className="rounded-2xl border border-[#f7c62f]/25 bg-[#071a2d] p-4"><p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#f7c62f]">{playoffFixtureTitle(fixture.key, playoffTournament?.format)}</p><p className="mt-2 text-sm font-semibold">{fixture.teamA ? teamLabel(fixture.teamA) : "TBD"}</p><p className="text-sm font-semibold">{fixture.teamB ? teamLabel(fixture.teamB) : "TBD"}</p><p className="mt-3 text-xl font-bold text-[#f7c62f]">{fixture.teamAScore} : {fixture.teamBScore}</p></div>)}</div></section>}
               {!playoffComplete && <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
                 <div className="dashboard-live-panel rounded-[26px] border border-[#d9d3d0] bg-[#1b1d20] p-5 text-white shadow-[0_16px_30px_rgba(17,24,39,0.12)]">
