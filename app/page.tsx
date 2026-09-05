@@ -515,6 +515,46 @@ export default function Home() {
     return key;
   };
 
+  const hasPlayoffFinalMatch = Boolean(playoffTournament && matches.some((m) => m.tournamentId === playoffTournament.id && m.bracketKey === "final"));
+  const hasPlayoffBronzeMatch = Boolean(playoffTournament && matches.some((m) => m.tournamentId === playoffTournament.id && m.bracketKey === "bronze"));
+  const hasPlayoffSfMatch = Boolean(playoffTournament && matches.some((m) => m.tournamentId === playoffTournament.id && (m.bracketKey === "sf1" || m.bracketKey === "sf2")));
+  const hasPlayoffQ2Match = Boolean(playoffTournament && matches.some((m) => m.tournamentId === playoffTournament.id && m.bracketKey === "q2"));
+
+  const isPlayoffTournamentCompleted = Boolean(playoffTournament && playoffTournament.status === "completed");
+  const canCompleteTournament = Boolean(
+    playoffTournament &&
+    !isPlayoffTournamentCompleted &&
+    (playoffTournament.format === "external" ? (hasPlayoffFinalMatch && hasPlayoffBronzeMatch) : hasPlayoffFinalMatch)
+  );
+
+  const isPlayoffFixtureLocked = (fixtureKey: string) => {
+    if (!playoffTournament) return false;
+    if (isPlayoffTournamentCompleted) return true;
+
+    if (playoffTournament.format === "external") {
+      if (fixtureKey.startsWith("qf")) {
+        return hasPlayoffSfMatch || hasPlayoffFinalMatch || hasPlayoffBronzeMatch;
+      }
+      if (fixtureKey.startsWith("sf")) {
+        return hasPlayoffFinalMatch || hasPlayoffBronzeMatch;
+      }
+      if (fixtureKey === "final" || fixtureKey === "bronze") {
+        return isPlayoffTournamentCompleted;
+      }
+    } else {
+      if (fixtureKey === "q1" || fixtureKey === "eliminator") {
+        return hasPlayoffQ2Match || hasPlayoffFinalMatch;
+      }
+      if (fixtureKey === "q2") {
+        return hasPlayoffFinalMatch;
+      }
+      if (fixtureKey === "final") {
+        return isPlayoffTournamentCompleted;
+      }
+    }
+    return false;
+  };
+
   const playoffResultOrder = playoffTournament?.format === "external"
     ? ["final", "bronze", "sf1", "sf2", "qf1", "qf2", "qf3", "qf4"]
     : ["final", "q2", "q1", "eliminator"];
@@ -524,7 +564,10 @@ export default function Home() {
         return fixture?.match ? fixture : undefined;
       }).filter((fixture): fixture is NonNullable<typeof fixture> => Boolean(fixture))
     : [];
-  const playoffComplete = Boolean(playoffRoundRobinComplete && playoffTournament && playoffResultOrder.every((key) => playoffBracket.columns.flat().some((fixture) => fixture.key === key && fixture.match)));
+  const playoffComplete = Boolean(
+    isPlayoffTournamentCompleted ||
+    (playoffRoundRobinComplete && playoffTournament && playoffResultOrder.every((key) => playoffBracket.columns.flat().some((fixture) => fixture.key === key && fixture.match)))
+  );
 
   const deletablePlayers = players.filter((player) => player.group_name === deletePlayerDraft.group_name);
 
@@ -675,10 +718,17 @@ export default function Home() {
       setNotice("This playoff match is waiting for the earlier round to finish.");
       return;
     }
-    const score = playoffScores[fixture.key] ?? { a: "", b: "" };
+    if (isPlayoffFixtureLocked(fixture.key)) {
+      setNotice("This round is locked because subsequent matches or the tournament is completed.");
+      return;
+    }
+    const score = playoffScores[fixture.key] ?? {
+      a: fixture.match ? String(fixture.match.playerAScore) : "",
+      b: fixture.match ? String(fixture.match.playerBScore) : "",
+    };
     const playerAScore = Number(score.a);
     const playerBScore = Number(score.b);
-    if (!score.a || !score.b || playerAScore === playerBScore) {
+    if (!score.a || !score.b || !Number.isFinite(playerAScore) || !Number.isFinite(playerBScore) || playerAScore === playerBScore) {
       setNotice("Enter two different scores for the playoff match.");
       return;
     }
@@ -692,6 +742,20 @@ export default function Home() {
     }
     setPlayoffScores((current) => ({ ...current, [fixture.key]: { a: "", b: "" } }));
     setNotice(`Playoff result saved for ${teamLabel(fixture.teamA)} vs ${teamLabel(fixture.teamB)}.`);
+  };
+
+  const completeTournament = async (tournament: Tournament) => {
+    if (hasSupabaseConfig && supabase) {
+      const { error } = await supabase.from("tournaments").update({ status: "completed" }).eq("id", tournament.id);
+      if (error) {
+        setNotice(`Failed to complete tournament: ${error.message}`);
+        return;
+      }
+      await refreshDatabase();
+    } else {
+      setTournaments((current) => current.map((item) => (item.id === tournament.id ? { ...item, status: "completed" } : item)));
+    }
+    setNotice(`🏆 ${tournament.name} is now marked as Completed!`);
   };
 
   const addTeam = async (event: React.FormEvent) => {
@@ -1282,8 +1346,160 @@ export default function Home() {
             <section data-view="playoff" data-has-tournament={playoffTournament ? "true" : "false"} className="space-y-6">
               {!playoffTournament && <div className="playoff-empty rounded-[26px] border border-[#d7a91d]/40 bg-[#0d2b4a] p-8 text-center text-white"><p className="text-xs font-semibold uppercase tracking-[0.25em] text-[#f7c62f]">Playoff</p><h2 className="mt-2 text-2xl font-semibold">Select a tournament first</h2><p className="mt-2 text-sm text-slate-300">Choose a tournament from Dashboard to view its playoff bracket.</p></div>}
               {playoffTournament && <div className="grid gap-3 md:grid-cols-3"><div className="rounded-xl border border-[#e3b821] bg-[#f7c62f] p-5 text-center text-[#071a2d]"><p className="text-2xl">🥇</p><p className="text-xs uppercase tracking-[0.18em]">Gold</p><p className="mt-3 font-bold">{playoffBracket.podium[0] ? teamLabel(playoffBracket.podium[0]) : "TBD"}</p></div><div className="rounded-xl border border-[#b9c2ce] bg-[#e4e8ed] p-5 text-center text-[#142b45]"><p className="text-2xl">🥈</p><p className="text-xs uppercase tracking-[0.18em]">Silver</p><p className="mt-3 font-bold">{playoffBracket.podium[1] ? teamLabel(playoffBracket.podium[1]) : "TBD"}</p></div><div className="rounded-xl border border-[#a9683d] bg-[#ad6b43] p-5 text-center text-white"><p className="text-2xl">🥉</p><p className="text-xs uppercase tracking-[0.18em]">Bronze</p><p className="mt-3 font-bold">{playoffBracket.podium[2] ? teamLabel(playoffBracket.podium[2]) : "TBD"}</p></div></div>}
-              <div className="rounded-[26px] border border-[#d9d3d0] bg-[#191c20] p-5 text-white"><p className="text-[10px] uppercase tracking-[0.25em] text-slate-400">Knockout competition</p><div className="flex items-center justify-between gap-4"><h2 className="mt-2 text-2xl font-semibold">Playoff bracket</h2><select value={playoffTournament?.id ?? ""} onChange={(event) => setPlayoffTournamentId(event.target.value)} className="rounded-xl border border-white/10 bg-[#101316] px-3 py-2 text-sm text-white"><option value="">Select league</option>{visibleTournaments.map((tournament) => <option key={tournament.id} value={tournament.id}>{tournament.name}</option>)}</select></div><p className="mt-3 text-sm text-slate-300">{playoffTournament?.format === "internal" ? "Top 4: Qualifier 1, Eliminator, Qualifier 2, Final." : "Top 8: Quarter-finals, semi-finals, final, and bronze match."}</p></div>
-              {playoffTournament && <div className="overflow-x-auto rounded-[26px] border border-[#d9d3d0] bg-[#182f4d] p-5"><div className="grid min-w-[900px] grid-cols-3 gap-4">{playoffBracket.columns.map((column, columnIndex) => <div key={columnIndex} className="space-y-4"><p className="px-2 text-xs font-semibold uppercase tracking-[0.18em] text-amber-200">{playoffTournament.format === "external" ? ["Quarter-finals", "Semi-finals", "Final & bronze"][columnIndex] : ["Qualifier 1 / Eliminator", "Qualifier 2", "Final"][columnIndex]}</p>{column.map((fixture) => <div key={fixture.key} className="rounded-xl border border-[#d8c58a]/60 bg-white p-3 text-[#18212b]"><p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#6b7279]">{playoffFixtureTitle(fixture.key, playoffTournament?.format)}</p><p className="mt-2 text-sm font-semibold">{fixture.teamA ? teamLabel(fixture.teamA) : "Waiting for previous round"}</p><p className="text-sm font-semibold">{fixture.teamB ? teamLabel(fixture.teamB) : "Waiting for previous round"}</p><div className="mt-3 grid grid-cols-2 gap-2"><input type="text" inputMode="numeric" placeholder="Score" value={playoffScores[fixture.key]?.a ?? (fixture.match ? String(fixture.match.playerAScore) : "")} onChange={(event) => setPlayoffScores((current) => ({ ...current, [fixture.key]: { a: event.target.value.replace(/\D/g, ""), b: current[fixture.key]?.b ?? "" } }))} className="w-full rounded-lg border border-[#d8dfe4] px-2 py-1.5 text-sm" /><input type="text" inputMode="numeric" placeholder="Score" value={playoffScores[fixture.key]?.b ?? (fixture.match ? String(fixture.match.playerBScore) : "")} onChange={(event) => setPlayoffScores((current) => ({ ...current, [fixture.key]: { a: current[fixture.key]?.a ?? "", b: event.target.value.replace(/\D/g, "") } }))} className="w-full rounded-lg border border-[#d8dfe4] px-2 py-1.5 text-sm" /></div>{fixture.teamA && fixture.teamB && <button type="button" onClick={() => void savePlayoffResult(fixture)} className="mt-3 w-full rounded-lg bg-[#c9962d] px-3 py-2 text-xs font-semibold text-white">{fixture.match ? "Update result" : "Save result"}</button>}</div>)}</div>)}</div></div>}
+              <div className="rounded-[26px] border border-[#d9d3d0] bg-[#191c20] p-5 text-white">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-[0.25em] text-slate-400">Knockout competition</p>
+                    <h2 className="mt-1 text-2xl font-semibold">Playoff bracket</h2>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-3">
+                    {playoffTournament && (
+                      isPlayoffTournamentCompleted ? (
+                        <span className="rounded-xl border border-emerald-500/40 bg-emerald-500/20 px-3.5 py-2 text-xs font-bold uppercase tracking-wider text-emerald-300">
+                          ✓ Tournament Completed
+                        </span>
+                      ) : canCompleteTournament ? (
+                        <button
+                          type="button"
+                          onClick={() => void completeTournament(playoffTournament)}
+                          className="rounded-xl bg-gradient-to-r from-amber-500 to-yellow-400 px-4 py-2 text-xs font-bold uppercase tracking-wider text-[#071a2d] shadow-md transition-all hover:brightness-110 active:scale-95"
+                        >
+                          🏆 Complete Tournament
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled
+                          className="rounded-xl border border-white/10 bg-white/5 px-3.5 py-2 text-xs font-semibold text-slate-400 cursor-not-allowed"
+                        >
+                          Complete Tournament (Awaiting Finals)
+                        </button>
+                      )
+                    )}
+                    <select
+                      value={playoffTournament?.id ?? ""}
+                      onChange={(event) => setPlayoffTournamentId(event.target.value)}
+                      className="rounded-xl border border-white/10 bg-[#101316] px-3 py-2 text-sm text-white outline-none"
+                    >
+                      <option value="">Select league</option>
+                      {visibleTournaments.map((tournament) => (
+                        <option key={tournament.id} value={tournament.id}>
+                          {tournament.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <p className="mt-3 text-sm text-slate-300">
+                  {playoffTournament?.format === "internal"
+                    ? "Top 4: Qualifier 1, Eliminator, Qualifier 2, Final."
+                    : "Top 8: Quarter-finals, semi-finals, final, and bronze match."}
+                </p>
+              </div>
+              {playoffTournament && (
+                <div className="overflow-x-auto rounded-[26px] border border-[#d9d3d0] bg-[#182f4d] p-5">
+                  <div className="grid min-w-[900px] grid-cols-3 gap-4">
+                    {playoffBracket.columns.map((column, columnIndex) => (
+                      <div key={columnIndex} className="space-y-4">
+                        <p className="px-2 text-xs font-semibold uppercase tracking-[0.18em] text-amber-200">
+                          {playoffTournament.format === "external"
+                            ? ["Quarter-finals", "Semi-finals", "Final & bronze"][columnIndex]
+                            : ["Qualifier 1 / Eliminator", "Qualifier 2", "Final"][columnIndex]}
+                        </p>
+                        {column.map((fixture) => {
+                          const isLocked = isPlayoffFixtureLocked(fixture.key);
+                          const valA = isLocked && fixture.match
+                            ? String(fixture.match.playerAScore)
+                            : (playoffScores[fixture.key]?.a ?? (fixture.match ? String(fixture.match.playerAScore) : ""));
+                          const valB = isLocked && fixture.match
+                            ? String(fixture.match.playerBScore)
+                            : (playoffScores[fixture.key]?.b ?? (fixture.match ? String(fixture.match.playerBScore) : ""));
+
+                          return (
+                            <div key={fixture.key} className="rounded-xl border border-[#d8c58a]/60 bg-white p-3 text-[#18212b]">
+                              <div className="flex items-center justify-between">
+                                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#6b7279]">
+                                  {playoffFixtureTitle(fixture.key, playoffTournament?.format)}
+                                </p>
+                                {isLocked && (
+                                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-slate-600">
+                                    Locked
+                                  </span>
+                                )}
+                              </div>
+                              <p className="mt-2 text-sm font-semibold">{fixture.teamA ? teamLabel(fixture.teamA) : "Waiting for previous round"}</p>
+                              <p className="text-sm font-semibold">{fixture.teamB ? teamLabel(fixture.teamB) : "Waiting for previous round"}</p>
+                              <div className="mt-3 grid grid-cols-2 gap-2">
+                                <input
+                                  type="text"
+                                  inputMode="numeric"
+                                  placeholder="Score"
+                                  disabled={isLocked}
+                                  value={valA}
+                                  onChange={(event) =>
+                                    setPlayoffScores((current) => ({
+                                      ...current,
+                                      [fixture.key]: {
+                                        a: event.target.value.replace(/\D/g, ""),
+                                        b: current[fixture.key]?.b ?? (fixture.match ? String(fixture.match.playerBScore) : ""),
+                                      },
+                                    }))
+                                  }
+                                  className={`w-full rounded-lg border px-2 py-1.5 text-sm ${
+                                    isLocked
+                                      ? "border-[#d8dfe4] bg-slate-100 font-bold text-slate-800 cursor-not-allowed"
+                                      : "border-[#d8dfe4] bg-white text-[#18212b]"
+                                  }`}
+                                />
+                                <input
+                                  type="text"
+                                  inputMode="numeric"
+                                  placeholder="Score"
+                                  disabled={isLocked}
+                                  value={valB}
+                                  onChange={(event) =>
+                                    setPlayoffScores((current) => ({
+                                      ...current,
+                                      [fixture.key]: {
+                                        a: current[fixture.key]?.a ?? (fixture.match ? String(fixture.match.playerAScore) : ""),
+                                        b: event.target.value.replace(/\D/g, ""),
+                                      },
+                                    }))
+                                  }
+                                  className={`w-full rounded-lg border px-2 py-1.5 text-sm ${
+                                    isLocked
+                                      ? "border-[#d8dfe4] bg-slate-100 font-bold text-slate-800 cursor-not-allowed"
+                                      : "border-[#d8dfe4] bg-white text-[#18212b]"
+                                  }`}
+                                />
+                              </div>
+                              {fixture.teamA && fixture.teamB && (
+                                isLocked ? (
+                                  <button
+                                    type="button"
+                                    disabled
+                                    className="mt-3 w-full rounded-lg bg-slate-200 px-3 py-2 text-xs font-semibold text-slate-500 cursor-not-allowed"
+                                  >
+                                    {fixture.match ? "Result Locked" : "Round Locked"}
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => void savePlayoffResult(fixture)}
+                                    className="mt-3 w-full rounded-lg bg-[#c9962d] px-3 py-2 text-xs font-semibold text-white hover:bg-[#b58525]"
+                                  >
+                                    {fixture.match ? "Update result" : "Save result"}
+                                  </button>
+                                )
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               {playoffTournament && <div className="grid gap-3 md:grid-cols-3"><div className="rounded-xl border border-[#b9c2ce] bg-[#e4e8ed] p-5 text-center text-[#142b45]"><p className="text-2xl">🥈</p><p className="text-xs uppercase tracking-[0.18em]">Silver</p><p className="mt-3 font-bold">{playoffBracket.podium[1] ? teamLabel(playoffBracket.podium[1]) : "TBD"}</p></div><div className="rounded-xl border border-[#e3b821] bg-[#f7c62f] p-5 text-center text-[#071a2d]"><p className="text-2xl">🥇</p><p className="text-xs uppercase tracking-[0.18em]">Gold</p><p className="mt-3 font-bold">{playoffBracket.podium[0] ? teamLabel(playoffBracket.podium[0]) : "TBD"}</p></div><div className="rounded-xl border border-[#a9683d] bg-[#ad6b43] p-5 text-center text-white"><p className="text-2xl">🥉</p><p className="text-xs uppercase tracking-[0.18em]">Bronze</p><p className="mt-3 font-bold">{playoffBracket.podium[2] ? teamLabel(playoffBracket.podium[2]) : "TBD"}</p></div></div>}
             </section>
           )}
