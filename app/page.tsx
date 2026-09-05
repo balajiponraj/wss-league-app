@@ -461,9 +461,7 @@ export default function Home() {
   }, [matches, playoffRoundRobinComplete, playoffTournament, teams]);
 
   const playoffMatch = (key: string, teamA?: Team, teamB?: Team) => {
-    const saved = playoffRoundRobinComplete
-      ? matches.find((match) => match.tournamentId === playoffTournament?.id && match.stage && match.bracketKey === key)
-      : undefined;
+    const saved = matches.find((match) => match.tournamentId === playoffTournament?.id && match.bracketKey === key);
     return { key, teamA, teamB, match: saved, teamAScore: saved?.playerAScore, teamBScore: saved?.playerBScore };
   };
 
@@ -566,6 +564,7 @@ export default function Home() {
     : [];
   const playoffComplete = Boolean(
     isPlayoffTournamentCompleted ||
+    (selectedTournament && selectedTournament.status === "completed") ||
     (playoffRoundRobinComplete && playoffTournament && playoffResultOrder.every((key) => playoffBracket.columns.flat().some((fixture) => fixture.key === key && fixture.match)))
   );
 
@@ -1186,7 +1185,7 @@ export default function Home() {
                 </div>
               </section>}
 
-              {selectedTournament && playoffBracket.columns.some((column) => column.some((fixture) => fixture.match)) && <section className="rounded-[26px] border border-[#d9d3d0] bg-[#182f4d] p-5 text-white"><div className="flex items-center justify-between"><div><p className="text-[10px] uppercase tracking-[0.25em] text-amber-200">Knockout results</p><h2 className="mt-1 text-2xl font-semibold">{selectedTournament.name} playoff results</h2></div><span className="text-xs uppercase tracking-[0.16em] text-slate-300">{selectedTournament.format === "external" ? "Quarter-finals · Semi-finals · Final · Bronze" : "Qualifier 1 · Eliminator · Qualifier 2 · Final"}</span></div><div className="mt-5 grid gap-4 md:grid-cols-3">{playoffBracket.columns.map((column, columnIndex) => <div key={columnIndex} className="space-y-3"><p className="text-xs font-semibold uppercase tracking-[0.16em] text-amber-200">{selectedTournament.format === "external" ? ["Quarter-finals", "Semi-finals", "Final & Bronze"][columnIndex] : ["Qualifier 1 / Eliminator", "Qualifier 2", "Final"][columnIndex]}</p>{column.filter((fixture) => fixture.match).map((fixture) => <div key={fixture.key} className="rounded-xl border border-white/15 bg-white p-3 text-[#18212b]"><p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#68717a]">{playoffFixtureTitle(fixture.key, selectedTournament?.format)}</p><p className="mt-2 text-sm font-semibold">{fixture.teamA ? teamLabel(fixture.teamA) : "TBD"}</p><p className="text-sm font-semibold">{fixture.teamB ? teamLabel(fixture.teamB) : "TBD"}</p><p className="mt-2 text-lg font-bold">{fixture.teamAScore} : {fixture.teamBScore}</p></div>)}</div>)}</div></section>}
+              {selectedTournament && !playoffComplete && playoffBracket.columns.some((column) => column.some((fixture) => fixture.match)) && <section className="rounded-[26px] border border-[#d9d3d0] bg-[#182f4d] p-5 text-white"><div className="flex items-center justify-between"><div><p className="text-[10px] uppercase tracking-[0.25em] text-amber-200">Knockout results</p><h2 className="mt-1 text-2xl font-semibold">{selectedTournament.name} playoff results</h2></div><span className="text-xs uppercase tracking-[0.16em] text-slate-300">{selectedTournament.format === "external" ? "Quarter-finals · Semi-finals · Final · Bronze" : "Qualifier 1 · Eliminator · Qualifier 2 · Final"}</span></div><div className="mt-5 grid gap-4 md:grid-cols-3">{playoffBracket.columns.map((column, columnIndex) => <div key={columnIndex} className="space-y-3"><p className="text-xs font-semibold uppercase tracking-[0.16em] text-amber-200">{selectedTournament.format === "external" ? ["Quarter-finals", "Semi-finals", "Final & Bronze"][columnIndex] : ["Qualifier 1 / Eliminator", "Qualifier 2", "Final"][columnIndex]}</p>{column.filter((fixture) => fixture.match).map((fixture) => <div key={fixture.key} className="rounded-xl border border-white/15 bg-white p-3 text-[#18212b]"><p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#68717a]">{playoffFixtureTitle(fixture.key, selectedTournament?.format)}</p><p className="mt-2 text-sm font-semibold">{fixture.teamA ? teamLabel(fixture.teamA) : "TBD"}</p><p className="text-sm font-semibold">{fixture.teamB ? teamLabel(fixture.teamB) : "TBD"}</p><p className="mt-2 text-lg font-bold">{fixture.teamAScore} : {fixture.teamBScore}</p></div>)}</div>)}</div></section>}
 
               <section className="rounded-[26px] border border-[#d9d3d0] bg-[#f9f7f5] p-5">
                 <div className="flex items-center justify-between gap-3">
