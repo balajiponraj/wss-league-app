@@ -370,7 +370,7 @@ export default function Home() {
   const teamBelongsToGroup = (team: Team, group: string | undefined) =>
     Boolean(group) && (normalizeGroup(team.group_name) === normalizeGroup(group) || normalizeGroup(playerMap[team.playerAId]?.group_name) === normalizeGroup(group) || normalizeGroup(playerMap[team.playerBId]?.group_name) === normalizeGroup(group));
 
-  const selectedTournament = tournaments.find((tournament) => tournament.id === matchDraft.tournamentId);
+  const selectedTournament = tournaments.find((tournament) => tournament.id === matchDraft.tournamentId) ?? visibleTournaments[0];
   const tournamentTeams = teams.filter((team) => team.tournamentId === selectedTournament?.id);
   const team1Group = selectedTournament?.group_a;
   const team2Group = selectedTournament?.format === "external" ? selectedTournament.group_b : selectedTournament?.group_a;
@@ -380,7 +380,7 @@ export default function Home() {
     const fixtures: { teamA: Team; teamB: Team; match?: MatchRecord; teamAScore?: number; teamBScore?: number }[] = [];
     tournamentTeams.forEach((teamA, index) => tournamentTeams.slice(index + 1).forEach((teamB) => {
       if (selectedTournament.format === "external" && teamGroup(teamA) === teamGroup(teamB)) return;
-      const match = matches.find((item) => item.tournamentId === selectedTournament.id && ((item.teamAId === teamA.id && item.teamBId === teamB.id) || (item.teamAId === teamB.id && item.teamBId === teamA.id)));
+      const match = matches.find((item) => item.tournamentId === selectedTournament.id && (!item.stage || item.stage === "round_robin") && ((item.teamAId === teamA.id && item.teamBId === teamB.id) || (item.teamAId === teamB.id && item.teamBId === teamA.id)));
       const teamsMatchStoredOrder = match?.teamAId === teamA.id;
       fixtures.push({
         teamA,
@@ -391,7 +391,7 @@ export default function Home() {
       });
     }));
     return fixtures;
-  }, [matches, selectedTournament, teams]);
+  }, [matches, selectedTournament, teams, playerMap, groups]);
   const eligibleTeamA = useMemo(() => tournamentTeams.filter((team) => teamBelongsToGroup(team, team1Group)), [tournamentTeams, team1Group, playerMap]);
   const eligibleTeamB = useMemo(() => tournamentTeams.filter((team) => team.id !== matchDraft.teamAId && teamBelongsToGroup(team, team2Group)), [tournamentTeams, matchDraft.teamAId, team2Group, playerMap]);
 
@@ -523,13 +523,20 @@ export default function Home() {
   const hasPlayoffSfMatch = Boolean(playoffTournament && matches.some((m) => m.tournamentId === playoffTournament.id && (m.bracketKey === "sf1" || m.bracketKey === "sf2")));
   const hasPlayoffQ2Match = Boolean(playoffTournament && matches.some((m) => m.tournamentId === playoffTournament.id && m.bracketKey === "q2"));
 
-  const isPlayoffTournamentCompleted = Boolean(playoffTournament && playoffTournament.status === "completed");
-  const isSelectedTournamentCompleted = Boolean(selectedTournament && selectedTournament.status === "completed");
+  const currentTournament = selectedTournament ?? playoffTournament;
+  const currentFinalMatch = Boolean(currentTournament && matches.some((m) => m.tournamentId === currentTournament.id && m.bracketKey === "final"));
+  const currentBronzeMatch = Boolean(currentTournament && matches.some((m) => m.tournamentId === currentTournament.id && m.bracketKey === "bronze"));
+
+  const isPlayoffTournamentCompleted = Boolean(
+    playoffTournament &&
+    (playoffTournament.status === "completed" ||
+     (playoffTournament.format === "external" ? (hasPlayoffFinalMatch && hasPlayoffBronzeMatch) : hasPlayoffFinalMatch))
+  );
+
   const isTournamentCompleted = Boolean(
-    isPlayoffTournamentCompleted ||
-    isSelectedTournamentCompleted ||
-    (selectedTournament && (selectedTournament.format === "external" ? (hasPlayoffFinalMatch && hasPlayoffBronzeMatch) : hasPlayoffFinalMatch)) ||
-    (playoffTournament && (playoffTournament.format === "external" ? (hasPlayoffFinalMatch && hasPlayoffBronzeMatch) : hasPlayoffFinalMatch))
+    currentTournament &&
+    (currentTournament.status === "completed" ||
+     (currentTournament.format === "external" ? (currentFinalMatch && currentBronzeMatch) : currentFinalMatch))
   );
 
   const canCompleteTournament = Boolean(
@@ -566,10 +573,10 @@ export default function Home() {
     return false;
   };
 
-  const playoffResultOrder = (selectedTournament ?? playoffTournament)?.format === "external"
+  const playoffResultOrder = currentTournament?.format === "external"
     ? ["final", "bronze", "sf1", "sf2", "qf1", "qf2", "qf3", "qf4"]
     : ["final", "q2", "q1", "eliminator"];
-  const dashboardPlayoffResults = (selectedTournament ?? playoffTournament)
+  const dashboardPlayoffResults = currentTournament
     ? playoffResultOrder.map((key) => {
         const fixture = playoffBracket.columns.flat().find((item) => item.key === key);
         return fixture?.match ? fixture : undefined;
@@ -1068,7 +1075,7 @@ export default function Home() {
 
           {tab === "dashboard" && (
             <>
-              <select value={matchDraft.tournamentId} onChange={(event) => selectTournament(event.target.value)} className="w-full rounded-xl border border-[#d7a91d]/50 bg-[#0d2b4a] px-4 py-3 text-sm font-semibold text-white outline-none"><option value="">Select tournament</option>{visibleTournaments.map((tournament) => <option key={tournament.id} value={tournament.id}>{tournament.name}{tournament.status === "completed" ? " ✓ (Completed)" : ""}</option>)}</select>
+              <select value={selectedTournament?.id ?? ""} onChange={(event) => selectTournament(event.target.value)} className="w-full rounded-xl border border-[#d7a91d]/50 bg-[#0d2b4a] px-4 py-3 text-sm font-semibold text-white outline-none"><option value="">Select tournament</option>{visibleTournaments.map((tournament) => <option key={tournament.id} value={tournament.id}>{tournament.name}{tournament.status === "completed" ? " ✓ (Completed)" : ""}</option>)}</select>
               {playoffComplete && <section className="space-y-6 rounded-[26px] border border-[#d7a91d]/50 bg-[#0d2b4a] p-5 text-white shadow-[0_20px_45px_rgba(0,0,0,0.26)]"><div className="border-b border-[#f7c62f]/30 pb-5 text-center"><p className="text-xs font-semibold uppercase tracking-[0.3em] text-[#f7c62f]">Tournament champion</p><p className="mt-2 text-3xl">🥇</p><h2 className="text-2xl font-bold text-[#f7c62f]">{playoffBracket.podium[0] ? teamLabel(playoffBracket.podium[0]) : "Champion"}</h2><p className="mt-2 text-sm text-slate-300">{playoffTournament?.name}</p></div><div className="grid gap-3 md:grid-cols-3"><div className="rounded-xl border border-[#e3b821] bg-[#f7c62f] p-4 text-center text-[#071a2d]"><p className="text-2xl">🥇</p><p className="text-xs font-semibold uppercase tracking-[0.18em]">Gold</p><p className="mt-2 font-bold">{playoffBracket.podium[0] ? teamLabel(playoffBracket.podium[0]) : "TBD"}</p></div><div className="rounded-xl border border-slate-300/50 bg-slate-200 p-4 text-center text-[#142b45]"><p className="text-2xl">🥈</p><p className="text-xs font-semibold uppercase tracking-[0.18em]">Silver</p><p className="mt-2 font-bold">{playoffBracket.podium[1] ? teamLabel(playoffBracket.podium[1]) : "TBD"}</p></div><div className="rounded-xl border border-[#a9683d] bg-[#ad6b43] p-4 text-center text-white"><p className="text-2xl">🥉</p><p className="text-xs font-semibold uppercase tracking-[0.18em]">Bronze</p><p className="mt-2 font-bold">{playoffBracket.podium[2] ? teamLabel(playoffBracket.podium[2]) : "TBD"}</p></div></div><div className="grid gap-3 md:grid-cols-3">{dashboardPlayoffResults.map((fixture) => <div key={fixture.key} className="rounded-2xl border border-[#f7c62f]/25 bg-[#071a2d] p-4"><p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#f7c62f]">{playoffFixtureTitle(fixture.key, playoffTournament?.format)}</p><p className="mt-2 text-sm font-semibold">{fixture.teamA ? teamLabel(fixture.teamA) : "TBD"}</p><p className="text-sm font-semibold">{fixture.teamB ? teamLabel(fixture.teamB) : "TBD"}</p><p className="mt-3 text-xl font-bold text-[#f7c62f]">{fixture.teamAScore} : {fixture.teamBScore}</p></div>)}</div></section>}
               {!playoffComplete && <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
                 <div className="dashboard-live-panel rounded-[26px] border border-[#d9d3d0] bg-[#1b1d20] p-5 text-white shadow-[0_16px_30px_rgba(17,24,39,0.12)]">
