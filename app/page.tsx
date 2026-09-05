@@ -818,7 +818,22 @@ export default function Home() {
     const winnerId = playerAScore > playerBScore ? teamA.playerAId : teamB.playerAId;
 
     const selectedFixtureMatch = tournamentFixtures.find((fixture) => fixture.teamA.id === teamA.id && fixture.teamB.id === teamB.id)?.match;
-    const existingMatch = (editingMatchId ? matches.find((match) => match.id === editingMatchId) : undefined) ?? selectedFixtureMatch;
+    let existingMatch = (editingMatchId ? matches.find((match) => match.id === editingMatchId) : undefined) ?? selectedFixtureMatch;
+
+    // Re-check the database directly (not just local state) so a stale client can never create a duplicate fixture row.
+    if (hasSupabaseConfig && supabase && !existingMatch) {
+      const { data: existingRows, error: lookupError } = await supabase
+        .from("matches")
+        .select("*")
+        .eq("tournamentId", matchDraft.tournamentId)
+        .or(`and(teamAId.eq.${teamA.id},teamBId.eq.${teamB.id}),and(teamAId.eq.${teamB.id},teamBId.eq.${teamA.id})`);
+      if (lookupError) {
+        setNotice(`Could not verify existing result: ${lookupError.message}`);
+        return;
+      }
+      existingMatch = existingRows?.find((row) => !row.stage || row.stage === "round_robin");
+    }
+
     const record: MatchRecord = {
       id: existingMatch?.id ?? createId(),
       playerAId: teamA.playerAId,
@@ -834,9 +849,22 @@ export default function Home() {
     };
 
     if (hasSupabaseConfig && supabase) {
-      const result = existingMatch
+      let result = existingMatch
         ? await supabase.from("matches").update(record).eq("id", existingMatch.id).select().single()
         : await supabase.from("matches").insert([record]).select().single();
+
+      // A duplicate-fixture race can still slip through; if so, fall back to updating the row that already exists.
+      if (result.error?.code === "23505" && !existingMatch) {
+        const { data: retryRows } = await supabase
+          .from("matches")
+          .select("*")
+          .eq("tournamentId", matchDraft.tournamentId)
+          .or(`and(teamAId.eq.${teamA.id},teamBId.eq.${teamB.id}),and(teamAId.eq.${teamB.id},teamBId.eq.${teamA.id})`);
+        const retryMatch = retryRows?.find((row) => !row.stage || row.stage === "round_robin");
+        if (retryMatch) {
+          result = await supabase.from("matches").update(record).eq("id", retryMatch.id).select().single();
+        }
+      }
 
       if (result.error) {
         setNotice(`Supabase match save failed: ${result.error.message}`);
