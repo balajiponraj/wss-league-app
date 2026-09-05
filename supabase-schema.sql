@@ -165,7 +165,7 @@ create policy "WSS tournaments can be added by admins"
   with check (true);
 
 create policy "WSS tournaments can be updated"
-  on public.tournaments for update to authenticated using (true) with check (true);
+  on public.tournaments for update to anon, authenticated using (true) with check (true);
 
 create policy "WSS tournaments can be deleted"
   on public.tournaments for delete to authenticated using (true);
