@@ -165,6 +165,7 @@ export default function Home() {
   ]);
   const [multiGroupTournamentId, setMultiGroupTournamentId] = useState("");
   const [multiGroupScores, setMultiGroupScores] = useState<Record<string, { a: string; b: string }>>({});
+  const [multiGroupEditingKeys, setMultiGroupEditingKeys] = useState<Record<string, boolean>>({});
   const [finalDraft, setFinalDraft] = useState({ groupA: "", groupB: "", groupAPlayers: [] as string[], groupBPlayers: [] as string[] });
   const [deletePlayerDraft, setDeletePlayerDraft] = useState({ name: "", group_name: "WSS" });
   const [deleteTournamentId, setDeleteTournamentId] = useState("");
@@ -521,7 +522,16 @@ export default function Home() {
     } else {
       setMatches((current) => (fixture.match ? current.map((item) => (item.id === record.id ? record : item)) : [...current, record]));
     }
-    setMultiGroupScores((current) => ({ ...current, [fixture.fixtureKey]: { a: "", b: "" } }));
+    setMultiGroupScores((current) => {
+      const next = { ...current };
+      delete next[fixture.fixtureKey];
+      return next;
+    });
+    setMultiGroupEditingKeys((current) => {
+      const next = { ...current };
+      delete next[fixture.fixtureKey];
+      return next;
+    });
     setNotice(`Result saved: ${pairLabel(fixture.teamAPlayers)} vs ${pairLabel(fixture.teamBPlayers)}.`);
   };
 
@@ -561,16 +571,34 @@ export default function Home() {
       .sort((a, b) => b.wins - a.wins || b.diff - a.diff || b.pf - a.pf);
   }, [multiGroupTournament, multiGroupConfig, matches]);
 
+  // A match win is credited once to the winning group (not once per player on that pair),
+  // unlike player standings where both partners individually earn a win for that match.
   const multiGroupGroupStandings = useMemo(() => {
+    if (!multiGroupTournament) return [] as { groupName: string; wins: number; diff: number; pf: number }[];
+    const groupOfPlayer: Record<string, string> = {};
+    multiGroupConfig.forEach((group) => group.playerIds.forEach((playerId) => { groupOfPlayer[playerId] = group.name; }));
+
     const byGroup: Record<string, { groupName: string; wins: number; diff: number; pf: number }> = {};
-    multiGroupPlayerStandings.forEach((entry) => {
-      const group = byGroup[entry.groupName] ?? (byGroup[entry.groupName] = { groupName: entry.groupName, wins: 0, diff: 0, pf: 0 });
-      group.wins += entry.wins;
-      group.diff += entry.diff;
-      group.pf += entry.pf;
-    });
+    const ensure = (groupName: string) => byGroup[groupName] ?? (byGroup[groupName] = { groupName, wins: 0, diff: 0, pf: 0 });
+
+    matches
+      .filter((match) => match.tournamentId === multiGroupTournament.id && match.stage === "multigroup")
+      .forEach((match) => {
+        const groupAName = groupOfPlayer[match.playerAId];
+        const groupBName = groupOfPlayer[match.playerBId];
+        if (!groupAName || !groupBName) return;
+        const entryA = ensure(groupAName);
+        const entryB = ensure(groupBName);
+        entryA.diff += match.playerAScore - match.playerBScore;
+        entryA.pf += match.playerAScore;
+        entryB.diff += match.playerBScore - match.playerAScore;
+        entryB.pf += match.playerBScore;
+        if (match.playerAScore > match.playerBScore) entryA.wins += 1;
+        else entryB.wins += 1;
+      });
+
     return Object.values(byGroup).sort((a, b) => b.wins - a.wins || b.diff - a.diff);
-  }, [multiGroupPlayerStandings]);
+  }, [multiGroupTournament, multiGroupConfig, matches]);
 
   const multiGroupFinalMatch = useMemo(
     () => (multiGroupTournament ? matches.find((match) => match.tournamentId === multiGroupTournament.id && match.stage === "multigroup_final" && match.bracketKey === "final") : undefined),
@@ -2008,17 +2036,42 @@ export default function Home() {
                     <h2 className="text-xl font-semibold text-[#181a1d]">Fixtures &amp; results</h2>
                     <div className="mt-4 grid gap-3 md:grid-cols-2">
                       {multiGroupFixtures.map((fixture) => {
-                        const valueA = multiGroupScores[fixture.fixtureKey]?.a ?? (fixture.match ? String(fixture.match.playerAScore) : "");
-                        const valueB = multiGroupScores[fixture.fixtureKey]?.b ?? (fixture.match ? String(fixture.match.playerBScore) : "");
+                        const isEditing = !fixture.match || Boolean(multiGroupEditingKeys[fixture.fixtureKey]);
+                        const valueA = isEditing
+                          ? (multiGroupScores[fixture.fixtureKey]?.a ?? (fixture.match ? String(fixture.match.playerAScore) : ""))
+                          : String(fixture.match?.playerAScore ?? "");
+                        const valueB = isEditing
+                          ? (multiGroupScores[fixture.fixtureKey]?.b ?? (fixture.match ? String(fixture.match.playerBScore) : ""))
+                          : String(fixture.match?.playerBScore ?? "");
                         return (
                           <div key={fixture.fixtureKey} className="rounded-[18px] border border-[#e4dfdc] bg-white p-4">
                             <p className="text-[10px] uppercase tracking-[0.14em] text-[#a8790e]">{fixture.groupAName} vs {fixture.groupBName}</p>
                             <p className="mt-2 font-semibold text-[#17191d]">{pairLabel(fixture.teamAPlayers)} <span className="text-[#8a9097]">vs</span> {pairLabel(fixture.teamBPlayers)}</p>
                             <div className="mt-3 grid grid-cols-2 gap-2">
-                              <input type="text" inputMode="numeric" placeholder="Score" value={valueA} onChange={(event) => setMultiGroupScores((current) => ({ ...current, [fixture.fixtureKey]: { a: event.target.value.replace(/\D/g, ""), b: current[fixture.fixtureKey]?.b ?? valueB } }))} className="w-full rounded-lg border border-[#d8dfe4] px-2 py-1.5 text-sm" />
-                              <input type="text" inputMode="numeric" placeholder="Score" value={valueB} onChange={(event) => setMultiGroupScores((current) => ({ ...current, [fixture.fixtureKey]: { a: current[fixture.fixtureKey]?.a ?? valueA, b: event.target.value.replace(/\D/g, "") } }))} className="w-full rounded-lg border border-[#d8dfe4] px-2 py-1.5 text-sm" />
+                              <input
+                                type="text"
+                                inputMode="numeric"
+                                placeholder="Score"
+                                disabled={!isEditing}
+                                value={valueA}
+                                onChange={(event) => setMultiGroupScores((current) => ({ ...current, [fixture.fixtureKey]: { a: event.target.value.replace(/\D/g, ""), b: current[fixture.fixtureKey]?.b ?? valueB } }))}
+                                className={`w-full rounded-lg border px-2 py-1.5 text-sm ${isEditing ? "border-[#d8dfe4]" : "border-[#d8dfe4] bg-slate-100 font-bold text-slate-800"}`}
+                              />
+                              <input
+                                type="text"
+                                inputMode="numeric"
+                                placeholder="Score"
+                                disabled={!isEditing}
+                                value={valueB}
+                                onChange={(event) => setMultiGroupScores((current) => ({ ...current, [fixture.fixtureKey]: { a: current[fixture.fixtureKey]?.a ?? valueA, b: event.target.value.replace(/\D/g, "") } }))}
+                                className={`w-full rounded-lg border px-2 py-1.5 text-sm ${isEditing ? "border-[#d8dfe4]" : "border-[#d8dfe4] bg-slate-100 font-bold text-slate-800"}`}
+                              />
                             </div>
-                            <button type="button" onClick={() => void saveMultiGroupResult(fixture)} className="mt-3 w-full rounded-full border border-[#cdd8f7] px-3 py-1.5 text-xs font-semibold text-[#3949ab]">{fixture.match ? "Update result" : "Save result"}</button>
+                            {isEditing ? (
+                              <button type="button" onClick={() => void saveMultiGroupResult(fixture)} className="mt-3 w-full rounded-full border border-[#cdd8f7] px-3 py-1.5 text-xs font-semibold text-[#3949ab]">{fixture.match ? "Save update" : "Save result"}</button>
+                            ) : (
+                              <button type="button" onClick={() => setMultiGroupEditingKeys((current) => ({ ...current, [fixture.fixtureKey]: true }))} className="mt-3 w-full rounded-full border border-[#cdd8f7] px-3 py-1.5 text-xs font-semibold text-[#3949ab]">Update result</button>
+                            )}
                           </div>
                         );
                       })}
