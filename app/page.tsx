@@ -23,6 +23,9 @@ type MatchRecord = {
   tournamentId?: string;
   stage?: string;
   bracketKey?: string;
+  // second partner for multigroup 2v2 matches where partners rotate per fixture
+  teamAPlayer2Id?: string;
+  teamBPlayer2Id?: string;
 };
 
 type Team = {
@@ -37,7 +40,7 @@ type Team = {
 type Tournament = {
   id: string;
   name: string;
-  format: "internal" | "external";
+  format: "internal" | "external" | "multigroup";
   status: string;
   created_at: string;
   event_date: string;
@@ -45,13 +48,18 @@ type Tournament = {
   group_a: string;
   group_b: string;
   teams_per_group: number;
+  // JSON-encoded MultiGroupConfig: ordered (ranked) player ids per group, for the multigroup format
+  groups_json?: string;
 };
 
 type Group = { id: string; name: string };
 
 type PairInput = { group: "a" | "b"; index: number; player1: string; player2: string };
 
-type TabName = "dashboard" | "players" | "teams" | "tournaments" | "standings" | "playoffs" | "matches";
+type MultiGroupEntry = { name: string; playerIds: string[] };
+type MultiGroupConfig = MultiGroupEntry[];
+
+type TabName = "dashboard" | "players" | "teams" | "tournaments" | "standings" | "playoffs" | "matches" | "multigroup";
 
 const STORAGE_KEY = "wss-badminton-db-v1";
 const defaultGroupOptions = ["WSS", "FFBC", "SW", "SSBC", "DBCC", "DCSC"];
@@ -148,8 +156,16 @@ export default function Home() {
     note: "",
   });
   const [teamDraft, setTeamDraft] = useState({ name: "", playerAId: "", playerBId: "", group_name: "A" });
-  const [tournamentDraft, setTournamentDraft] = useState({ name: "", format: "internal" as "internal" | "external", event_date: "", location: "", group_a: "WSS", group_b: "DCSC", teams_per_group: 7 });
+  const [tournamentDraft, setTournamentDraft] = useState({ name: "", format: "internal" as "internal" | "external" | "multigroup", event_date: "", location: "", group_a: "WSS", group_b: "DCSC", teams_per_group: 7 });
   const [pairNames, setPairNames] = useState<PairInput[]>([]);
+  const [multiGroupDraft, setMultiGroupDraft] = useState<MultiGroupConfig>([
+    { name: "Group A", playerIds: [] },
+    { name: "Group B", playerIds: [] },
+    { name: "Group C", playerIds: [] },
+  ]);
+  const [multiGroupTournamentId, setMultiGroupTournamentId] = useState("");
+  const [multiGroupScores, setMultiGroupScores] = useState<Record<string, { a: string; b: string }>>({});
+  const [finalDraft, setFinalDraft] = useState({ groupA: "", groupB: "", groupAPlayers: [] as string[], groupBPlayers: [] as string[] });
   const [deletePlayerDraft, setDeletePlayerDraft] = useState({ name: "", group_name: "WSS" });
   const [deleteTournamentId, setDeleteTournamentId] = useState("");
   const [editingTournamentId, setEditingTournamentId] = useState<string | null>(null);
@@ -167,6 +183,8 @@ export default function Home() {
   const [notice, setNotice] = useState("Local storage mode enabled. Connect Supabase for live database storage.");
   const groupOptions = groups.map((group) => group.name);
   const visibleTournaments = tournaments.filter((tournament) => isAuthenticated || tournament.status !== "hidden");
+  // Round-robin (internal/external) dropdowns exclude multigroup leagues, which use their own dedicated tab.
+  const roundRobinTournaments = visibleTournaments.filter((tournament) => tournament.format !== "multigroup");
 
   const refreshDatabase = useCallback(async () => {
     if (!supabase) return;
@@ -424,6 +442,233 @@ export default function Home() {
     return tournamentPlayers(pair.group).filter((player) => !selectedInGroup.includes(player.id) && (player.id === pair[slot] || player.id !== otherSlot));
   };
 
+  const parseGroupsConfig = (tournament?: Tournament): MultiGroupConfig => {
+    if (!tournament?.groups_json) return [];
+    try {
+      const parsed = JSON.parse(tournament.groups_json);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  };
+
+  const multiGroupTournaments = tournaments.filter((tournament) => tournament.format === "multigroup");
+  const multiGroupTournament = tournaments.find((tournament) => tournament.id === multiGroupTournamentId) ?? multiGroupTournaments[0];
+  const multiGroupConfig = useMemo(() => parseGroupsConfig(multiGroupTournament), [multiGroupTournament]);
+
+  // Round robin is generated group-vs-group: every unique rank-pair combo within a group
+  // (e.g. seed 1+2, 1+3, 2+3...) faces the same rank-pair combo from every other group.
+  const multiGroupFixtures = useMemo(() => {
+    if (!multiGroupTournament) return [] as { fixtureKey: string; groupAName: string; groupBName: string; teamAPlayers: string[]; teamBPlayers: string[]; match?: MatchRecord }[];
+    const fixtures: { fixtureKey: string; groupAName: string; groupBName: string; teamAPlayers: string[]; teamBPlayers: string[]; match?: MatchRecord }[] = [];
+    for (let gi = 0; gi < multiGroupConfig.length; gi++) {
+      for (let gj = gi + 1; gj < multiGroupConfig.length; gj++) {
+        const groupA = multiGroupConfig[gi];
+        const groupB = multiGroupConfig[gj];
+        const n = Math.min(groupA.playerIds.length, groupB.playerIds.length);
+        for (let i = 0; i < n; i++) {
+          for (let j = i + 1; j < n; j++) {
+            const fixtureKey = `${groupA.name}__${groupB.name}__${i}-${j}`;
+            const teamAPlayers = [groupA.playerIds[i], groupA.playerIds[j]];
+            const teamBPlayers = [groupB.playerIds[i], groupB.playerIds[j]];
+            const match = matches.find((item) => item.tournamentId === multiGroupTournament.id && item.stage === "multigroup" && item.bracketKey === fixtureKey);
+            fixtures.push({ fixtureKey, groupAName: groupA.name, groupBName: groupB.name, teamAPlayers, teamBPlayers, match });
+          }
+        }
+      }
+    }
+    return fixtures;
+  }, [multiGroupTournament, multiGroupConfig, matches]);
+
+  const pairLabel = (playerIds: string[]) => playerIds.map((id) => playerMap[id]?.name ?? "Player").join(" / ");
+
+  const saveMultiGroupResult = async (fixture: { fixtureKey: string; groupAName: string; groupBName: string; teamAPlayers: string[]; teamBPlayers: string[]; match?: MatchRecord }) => {
+    if (!multiGroupTournament) return;
+    const score = multiGroupScores[fixture.fixtureKey] ?? {
+      a: fixture.match ? String(fixture.match.playerAScore) : "",
+      b: fixture.match ? String(fixture.match.playerBScore) : "",
+    };
+    const playerAScore = Number(score.a);
+    const playerBScore = Number(score.b);
+    if (!score.a || !score.b || !Number.isFinite(playerAScore) || !Number.isFinite(playerBScore) || playerAScore === playerBScore) {
+      setNotice("Enter two different scores for this match.");
+      return;
+    }
+    const record: MatchRecord = {
+      id: fixture.match?.id ?? createId(),
+      playerAId: fixture.teamAPlayers[0],
+      teamAPlayer2Id: fixture.teamAPlayers[1],
+      playerBId: fixture.teamBPlayers[0],
+      teamBPlayer2Id: fixture.teamBPlayers[1],
+      playerAScore,
+      playerBScore,
+      winnerId: playerAScore > playerBScore ? fixture.teamAPlayers[0] : fixture.teamBPlayers[0],
+      note: `${fixture.groupAName} vs ${fixture.groupBName}`,
+      createdAt: new Date().toISOString(),
+      tournamentId: multiGroupTournament.id,
+      stage: "multigroup",
+      bracketKey: fixture.fixtureKey,
+    };
+    if (hasSupabaseConfig && supabase) {
+      const result = fixture.match
+        ? await supabase.from("matches").update(record).eq("id", fixture.match.id)
+        : await supabase.from("matches").insert([record]);
+      if (result.error) {
+        setNotice(`Save failed: ${result.error.message}`);
+        return;
+      }
+      await refreshDatabase();
+    } else {
+      setMatches((current) => (fixture.match ? current.map((item) => (item.id === record.id ? record : item)) : [...current, record]));
+    }
+    setMultiGroupScores((current) => ({ ...current, [fixture.fixtureKey]: { a: "", b: "" } }));
+    setNotice(`Result saved: ${pairLabel(fixture.teamAPlayers)} vs ${pairLabel(fixture.teamBPlayers)}.`);
+  };
+
+  const multiGroupPlayerStandings = useMemo(() => {
+    if (!multiGroupTournament) return [] as { playerId: string; groupName: string; played: number; wins: number; pf: number; pa: number; diff: number }[];
+    const groupOfPlayer: Record<string, string> = {};
+    multiGroupConfig.forEach((group) => group.playerIds.forEach((playerId) => { groupOfPlayer[playerId] = group.name; }));
+
+    const statsByPlayer: Record<string, { playerId: string; groupName: string; played: number; wins: number; pf: number; pa: number }> = {};
+    const ensure = (playerId: string) =>
+      statsByPlayer[playerId] ?? (statsByPlayer[playerId] = { playerId, groupName: groupOfPlayer[playerId] ?? "-", played: 0, wins: 0, pf: 0, pa: 0 });
+
+    matches
+      .filter((match) => match.tournamentId === multiGroupTournament.id && match.stage === "multigroup")
+      .forEach((match) => {
+        const teamAIds = [match.playerAId, match.teamAPlayer2Id].filter(Boolean) as string[];
+        const teamBIds = [match.playerBId, match.teamBPlayer2Id].filter(Boolean) as string[];
+        const aWon = match.playerAScore > match.playerBScore;
+        teamAIds.forEach((playerId) => {
+          const entry = ensure(playerId);
+          entry.played += 1;
+          entry.pf += match.playerAScore;
+          entry.pa += match.playerBScore;
+          if (aWon) entry.wins += 1;
+        });
+        teamBIds.forEach((playerId) => {
+          const entry = ensure(playerId);
+          entry.played += 1;
+          entry.pf += match.playerBScore;
+          entry.pa += match.playerAScore;
+          if (!aWon) entry.wins += 1;
+        });
+      });
+
+    return Object.values(statsByPlayer)
+      .map((entry) => ({ ...entry, diff: entry.pf - entry.pa }))
+      .sort((a, b) => b.wins - a.wins || b.diff - a.diff || b.pf - a.pf);
+  }, [multiGroupTournament, multiGroupConfig, matches]);
+
+  const multiGroupGroupStandings = useMemo(() => {
+    const byGroup: Record<string, { groupName: string; wins: number; diff: number; pf: number }> = {};
+    multiGroupPlayerStandings.forEach((entry) => {
+      const group = byGroup[entry.groupName] ?? (byGroup[entry.groupName] = { groupName: entry.groupName, wins: 0, diff: 0, pf: 0 });
+      group.wins += entry.wins;
+      group.diff += entry.diff;
+      group.pf += entry.pf;
+    });
+    return Object.values(byGroup).sort((a, b) => b.wins - a.wins || b.diff - a.diff);
+  }, [multiGroupPlayerStandings]);
+
+  const multiGroupFinalMatch = useMemo(
+    () => (multiGroupTournament ? matches.find((match) => match.tournamentId === multiGroupTournament.id && match.stage === "multigroup_final" && match.bracketKey === "final") : undefined),
+    [multiGroupTournament, matches],
+  );
+
+  const saveMultiGroupFinal = async () => {
+    if (!multiGroupTournament) return;
+    if (finalDraft.groupAPlayers.length !== 2 || finalDraft.groupBPlayers.length !== 2) {
+      setNotice("Select exactly 2 players from each finalist group.");
+      return;
+    }
+    const score = multiGroupScores.final ?? { a: "", b: "" };
+    const playerAScore = Number(score.a);
+    const playerBScore = Number(score.b);
+    if (!score.a || !score.b || !Number.isFinite(playerAScore) || !Number.isFinite(playerBScore) || playerAScore === playerBScore) {
+      setNotice("Enter two different scores for the final.");
+      return;
+    }
+    const record: MatchRecord = {
+      id: multiGroupFinalMatch?.id ?? createId(),
+      playerAId: finalDraft.groupAPlayers[0],
+      teamAPlayer2Id: finalDraft.groupAPlayers[1],
+      playerBId: finalDraft.groupBPlayers[0],
+      teamBPlayer2Id: finalDraft.groupBPlayers[1],
+      playerAScore,
+      playerBScore,
+      winnerId: playerAScore > playerBScore ? finalDraft.groupAPlayers[0] : finalDraft.groupBPlayers[0],
+      note: `Final: ${finalDraft.groupA} vs ${finalDraft.groupB}`,
+      createdAt: new Date().toISOString(),
+      tournamentId: multiGroupTournament.id,
+      stage: "multigroup_final",
+      bracketKey: "final",
+    };
+    if (hasSupabaseConfig && supabase) {
+      const result = multiGroupFinalMatch
+        ? await supabase.from("matches").update(record).eq("id", multiGroupFinalMatch.id)
+        : await supabase.from("matches").insert([record]);
+      if (result.error) {
+        setNotice(`Final save failed: ${result.error.message}`);
+        return;
+      }
+      await refreshDatabase();
+    } else {
+      setMatches((current) => (multiGroupFinalMatch ? current.map((item) => (item.id === record.id ? record : item)) : [...current, record]));
+    }
+    setNotice(`🏆 Final result saved: ${pairLabel(finalDraft.groupAPlayers)} vs ${pairLabel(finalDraft.groupBPlayers)}.`);
+  };
+
+  const addMultiGroupTournament = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!tournamentDraft.name.trim()) {
+      setNotice("Enter a league name before creating it.");
+      return;
+    }
+    const validGroups = multiGroupDraft.filter((group) => group.name.trim() && group.playerIds.length >= 2);
+    if (validGroups.length < 2) {
+      setNotice("Add at least 2 groups, each with at least 2 ranked players.");
+      return;
+    }
+
+    const createdTournament: Tournament = {
+      id: editingTournamentId ?? createId(),
+      name: tournamentDraft.name.trim(),
+      format: "multigroup",
+      status: "active",
+      created_at: new Date().toISOString(),
+      event_date: easternLocalToIso(tournamentDraft.event_date),
+      location: tournamentDraft.location.trim(),
+      group_a: validGroups[0]?.name ?? "A",
+      group_b: validGroups[1]?.name ?? "B",
+      teams_per_group: 0,
+      groups_json: JSON.stringify(validGroups),
+    };
+
+    if (hasSupabaseConfig && supabase) {
+      const request = editingTournamentId
+        ? await supabase.from("tournaments").update(createdTournament).eq("id", editingTournamentId)
+        : await supabase.from("tournaments").insert([createdTournament]);
+      if (request.error) {
+        setNotice(`League save failed: ${request.error.message}`);
+        return;
+      }
+      await refreshDatabase();
+    } else {
+      setTournaments((current) => (editingTournamentId ? current.map((item) => (item.id === editingTournamentId ? createdTournament : item)) : [...current, createdTournament]));
+    }
+    setMultiGroupTournamentId(createdTournament.id);
+    setTournamentDraft({ name: "", format: "internal", event_date: "", location: "", group_a: "WSS", group_b: "DCSC", teams_per_group: 7 });
+    setMultiGroupDraft([
+      { name: "Group A", playerIds: [] },
+      { name: "Group B", playerIds: [] },
+      { name: "Group C", playerIds: [] },
+    ]);
+    setEditingTournamentId(null);
+    setNotice(`${createdTournament.name} created as a multi-group tournament.`);
+  };
+
   const standingsTournament = tournaments.find((tournament) => tournament.id === standingsTournamentId) ?? tournaments[0];
   const playoffTournament = tournaments.find((tournament) => tournament.id === playoffTournamentId) ?? selectedTournament;
   const teamStandings = useMemo(() => {
@@ -499,7 +744,7 @@ export default function Home() {
     return { columns: [q, [sf1, sf2], [final, bronze]], podium: [winnerOf("final"), loserOf("final"), winnerOf("bronze")] };
   }, [matches, playoffStandings, playoffTournament, teamMap]);
 
-  const playoffFixtureTitle = (key: string, format?: "internal" | "external") => {
+  const playoffFixtureTitle = (key: string, format?: "internal" | "external" | "multigroup") => {
     if (format === "internal") {
       if (key === "q1") return "Qualifier 1 (1 vs 2)";
       if (key === "eliminator") return "Eliminator (3 vs 4)";
@@ -817,7 +1062,7 @@ export default function Home() {
     setTeamDraft((current) => ({ ...current, name: "" }));
   };
 
-  const resizePairNames = (format: "internal" | "external", count: number) => {
+  const resizePairNames = (format: "internal" | "external" | "multigroup", count: number) => {
     const groups = format === "internal" ? (["a"] as const) : (["a", "b"] as const);
     setPairNames(groups.flatMap((group) => Array.from({ length: count }, (_, index) => ({ group, index, player1: "", player2: "" }))));
   };
@@ -825,6 +1070,13 @@ export default function Home() {
   const editTournament = (tournament: Tournament) => {
     setEditingTournamentId(tournament.id);
     setTournamentDraft({ name: tournament.name, format: tournament.format, event_date: easternIsoToLocal(tournament.event_date), location: tournament.location, group_a: tournament.group_a, group_b: tournament.group_b, teams_per_group: tournament.teams_per_group });
+    if (tournament.format === "multigroup") {
+      const config = parseGroupsConfig(tournament);
+      setMultiGroupDraft(config.length ? config : [{ name: "Group A", playerIds: [] }, { name: "Group B", playerIds: [] }, { name: "Group C", playerIds: [] }]);
+      setTab("tournaments");
+      setNotice(`Editing ${tournament.name}. Update the groups and save.`);
+      return;
+    }
     const tournamentTeams = teams.filter((team) => team.tournamentId === tournament.id);
     const groups = tournament.format === "internal" ? (["a"] as const) : (["a", "b"] as const);
     setPairNames(groups.flatMap((group) => tournamentTeams.filter((team) => teamGroup(team) === (group === "a" ? tournament.group_a : tournament.group_b)).map((team, index) => ({ group, index, player1: team.playerAId, player2: team.playerBId }))));
@@ -1036,6 +1288,7 @@ export default function Home() {
                 { key: "dashboard", label: "Dashboard" },
                 { key: "standings", label: "Standings" },
                 { key: "playoffs", label: "Playoff" },
+                ...(multiGroupTournaments.length ? [{ key: "multigroup", label: "Multi-group" }] : []),
                 ...(isAuthenticated ? [{ key: "players", label: "Players" }, { key: "tournaments", label: "Leagues" }] : []),
               ].map((item) => (
                 <button
@@ -1075,7 +1328,7 @@ export default function Home() {
 
           {tab === "dashboard" && (
             <>
-              <select value={selectedTournament?.id ?? ""} onChange={(event) => selectTournament(event.target.value)} className="w-full rounded-xl border border-[#d7a91d]/50 bg-[#0d2b4a] px-4 py-3 text-sm font-semibold text-white outline-none"><option value="">Select tournament</option>{visibleTournaments.map((tournament) => <option key={tournament.id} value={tournament.id}>{tournament.name}{tournament.status === "completed" ? " ✓ (Completed)" : ""}</option>)}</select>
+              <select value={selectedTournament?.id ?? ""} onChange={(event) => selectTournament(event.target.value)} className="w-full rounded-xl border border-[#d7a91d]/50 bg-[#0d2b4a] px-4 py-3 text-sm font-semibold text-white outline-none"><option value="">Select tournament</option>{roundRobinTournaments.map((tournament) => <option key={tournament.id} value={tournament.id}>{tournament.name}{tournament.status === "completed" ? " ✓ (Completed)" : ""}</option>)}</select>
               {playoffComplete && <section className="space-y-6 rounded-[26px] border border-[#d7a91d]/50 bg-[#0d2b4a] p-5 text-white shadow-[0_20px_45px_rgba(0,0,0,0.26)]"><div className="border-b border-[#f7c62f]/30 pb-5 text-center"><p className="text-xs font-semibold uppercase tracking-[0.3em] text-[#f7c62f]">Tournament champion</p><p className="mt-2 text-3xl">🥇</p><h2 className="text-2xl font-bold text-[#f7c62f]">{playoffBracket.podium[0] ? teamLabel(playoffBracket.podium[0]) : "Champion"}</h2><p className="mt-2 text-sm text-slate-300">{playoffTournament?.name}</p></div><div className="grid gap-3 md:grid-cols-3"><div className="rounded-xl border border-[#e3b821] bg-[#f7c62f] p-4 text-center text-[#071a2d]"><p className="text-2xl">🥇</p><p className="text-xs font-semibold uppercase tracking-[0.18em]">Gold</p><p className="mt-2 font-bold">{playoffBracket.podium[0] ? teamLabel(playoffBracket.podium[0]) : "TBD"}</p></div><div className="rounded-xl border border-slate-300/50 bg-slate-200 p-4 text-center text-[#142b45]"><p className="text-2xl">🥈</p><p className="text-xs font-semibold uppercase tracking-[0.18em]">Silver</p><p className="mt-2 font-bold">{playoffBracket.podium[1] ? teamLabel(playoffBracket.podium[1]) : "TBD"}</p></div><div className="rounded-xl border border-[#a9683d] bg-[#ad6b43] p-4 text-center text-white"><p className="text-2xl">🥉</p><p className="text-xs font-semibold uppercase tracking-[0.18em]">Bronze</p><p className="mt-2 font-bold">{playoffBracket.podium[2] ? teamLabel(playoffBracket.podium[2]) : "TBD"}</p></div></div><div className="grid gap-3 md:grid-cols-3">{dashboardPlayoffResults.map((fixture) => <div key={fixture.key} className="rounded-2xl border border-[#f7c62f]/25 bg-[#071a2d] p-4"><p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#f7c62f]">{playoffFixtureTitle(fixture.key, playoffTournament?.format)}</p><p className="mt-2 text-sm font-semibold">{fixture.teamA ? teamLabel(fixture.teamA) : "TBD"}</p><p className="text-sm font-semibold">{fixture.teamB ? teamLabel(fixture.teamB) : "TBD"}</p><p className="mt-3 text-xl font-bold text-[#f7c62f]">{fixture.teamAScore} : {fixture.teamBScore}</p></div>)}</div></section>}
               {!playoffComplete && <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
                 <div className="dashboard-live-panel rounded-[26px] border border-[#d9d3d0] bg-[#1b1d20] p-5 text-white shadow-[0_16px_30px_rgba(17,24,39,0.12)]">
@@ -1088,7 +1341,7 @@ export default function Home() {
 
                   <select value={matchDraft.tournamentId} onChange={(event) => selectTournament(event.target.value)} className="mb-4 w-full rounded-xl border border-white/10 bg-[#121417] px-3 py-2 text-sm text-white outline-none">
                     <option value="">Select tournament</option>
-                    {visibleTournaments.map((tournament) => <option key={tournament.id} value={tournament.id}>{tournament.name}</option>)}
+                    {roundRobinTournaments.map((tournament) => <option key={tournament.id} value={tournament.id}>{tournament.name}</option>)}
                   </select>
 
                   <select value={matchDraft.teamAId && matchDraft.teamBId ? `${matchDraft.teamAId}:${matchDraft.teamBId}` : ""} onChange={(event) => selectFixture(event.target.value)} className="mb-4 w-full rounded-xl border border-white/10 bg-[#121417] px-3 py-2 text-sm text-white outline-none">
@@ -1330,31 +1583,71 @@ export default function Home() {
               <div className="rounded-[26px] border border-[#d9d3d0] bg-[#171a1d] p-5 text-white">
                 <p className="text-[10px] uppercase tracking-[0.25em] text-slate-400">League setup</p>
                 <h2 className="mt-2 text-2xl font-semibold">{editingTournamentId ? "Edit tournament" : "Create a tournament"}</h2>
-                <form onSubmit={addTournament} className="mt-5 space-y-4">
+                <form onSubmit={tournamentDraft.format === "multigroup" ? addMultiGroupTournament : addTournament} className="mt-5 space-y-4">
                   <input value={tournamentDraft.name} onChange={(event) => setTournamentDraft((current) => ({ ...current, name: event.target.value }))} placeholder="WSS Internal League" className="w-full rounded-xl border border-white/10 bg-[#101316] px-3 py-2.5 text-sm text-white outline-none" />
                   <input type="datetime-local" value={tournamentDraft.event_date} onChange={(event) => setTournamentDraft((current) => ({ ...current, event_date: event.target.value }))} className="w-full rounded-xl border border-white/10 bg-[#101316] px-3 py-2.5 text-sm text-white outline-none" />
                   <input value={tournamentDraft.location} onChange={(event) => setTournamentDraft((current) => ({ ...current, location: event.target.value }))} placeholder="Location" className="w-full rounded-xl border border-white/10 bg-[#101316] px-3 py-2.5 text-sm text-white outline-none" />
-                  <select value={tournamentDraft.format} onChange={(event) => setTournamentDraft((current) => ({ ...current, format: event.target.value as "internal" | "external" }))} className="w-full rounded-xl border border-white/10 bg-[#101316] px-3 py-2.5 text-sm text-white outline-none">
+                  <select value={tournamentDraft.format} onChange={(event) => setTournamentDraft((current) => ({ ...current, format: event.target.value as "internal" | "external" | "multigroup" }))} className="w-full rounded-xl border border-white/10 bg-[#101316] px-3 py-2.5 text-sm text-white outline-none">
                     <option value="internal">Internal: every team plays every other WSS team</option>
                     <option value="external">External: Group A plays Group B</option>
+                    <option value="multigroup">Multi-group: 3+ ranked groups, cross-group doubles round robin</option>
                   </select>
-                  <div className="grid grid-cols-2 gap-3">
-                    <select value={tournamentDraft.group_a} onChange={(event) => setTournamentDraft((current) => ({ ...current, group_a: event.target.value }))} className="w-full rounded-xl border border-white/10 bg-[#101316] px-3 py-2.5 text-sm text-white outline-none">{groupOptions.map((group) => <option key={group} value={group}>{group} group</option>)}</select>
-                    {tournamentDraft.format === "external" && <select value={tournamentDraft.group_b} onChange={(event) => setTournamentDraft((current) => ({ ...current, group_b: event.target.value }))} className="w-full rounded-xl border border-white/10 bg-[#101316] px-3 py-2.5 text-sm text-white outline-none">{groupOptions.filter((group) => group !== tournamentDraft.group_a).map((group) => <option key={group} value={group}>{group} group</option>)}</select>}
-                  </div>
-                  <input type="number" min={1} max={20} value={tournamentDraft.teams_per_group} onChange={(event) => { const count = Math.max(1, Math.min(20, Number(event.target.value) || 1)); setTournamentDraft((current) => ({ ...current, teams_per_group: count })); resizePairNames(tournamentDraft.format, count); }} className="w-full rounded-xl border border-white/10 bg-[#101316] px-3 py-2.5 text-sm text-white outline-none" placeholder="Teams per group" />
-                  <div className="space-y-3 rounded-2xl border border-white/10 bg-[#101316] p-3">
-                    <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Enter tournament pairs</p>
-                    {tournamentPairs.map((pair) => <div key={`${pair.group}-${pair.index}`}><p className="mb-1 text-xs font-semibold text-slate-300">Pair {pair.index + 1} · {pair.group === "a" ? tournamentDraft.group_a : tournamentDraft.group_b}</p><div className="grid grid-cols-2 gap-2"><select value={pair.player1} onChange={(event) => setPairNames((current) => { const next = current.length ? [...current] : tournamentPairs.map((item) => ({ ...item })); next.find((item) => item.group === pair.group && item.index === pair.index)!.player1 = event.target.value; return next; })} className="w-full rounded-lg border border-white/10 bg-[#171b1f] px-2.5 py-2 text-sm text-white outline-none"><option value="">Player 1</option>{availablePairPlayers(pair, "player1").map((player) => <option key={player.id} value={player.id}>{player.name}</option>)}</select><select value={pair.player2} onChange={(event) => setPairNames((current) => { const next = current.length ? [...current] : tournamentPairs.map((item) => ({ ...item })); next.find((item) => item.group === pair.group && item.index === pair.index)!.player2 = event.target.value; return next; })} className="w-full rounded-lg border border-white/10 bg-[#171b1f] px-2.5 py-2 text-sm text-white outline-none"><option value="">Player 2</option>{availablePairPlayers(pair, "player2").map((player) => <option key={player.id} value={player.id}>{player.name}</option>)}</select></div></div>)}
-                  </div>
+
+                  {tournamentDraft.format !== "multigroup" ? (
+                    <>
+                      <div className="grid grid-cols-2 gap-3">
+                        <select value={tournamentDraft.group_a} onChange={(event) => setTournamentDraft((current) => ({ ...current, group_a: event.target.value }))} className="w-full rounded-xl border border-white/10 bg-[#101316] px-3 py-2.5 text-sm text-white outline-none">{groupOptions.map((group) => <option key={group} value={group}>{group} group</option>)}</select>
+                        {tournamentDraft.format === "external" && <select value={tournamentDraft.group_b} onChange={(event) => setTournamentDraft((current) => ({ ...current, group_b: event.target.value }))} className="w-full rounded-xl border border-white/10 bg-[#101316] px-3 py-2.5 text-sm text-white outline-none">{groupOptions.filter((group) => group !== tournamentDraft.group_a).map((group) => <option key={group} value={group}>{group} group</option>)}</select>}
+                      </div>
+                      <input type="number" min={1} max={20} value={tournamentDraft.teams_per_group} onChange={(event) => { const count = Math.max(1, Math.min(20, Number(event.target.value) || 1)); setTournamentDraft((current) => ({ ...current, teams_per_group: count })); resizePairNames(tournamentDraft.format, count); }} className="w-full rounded-xl border border-white/10 bg-[#101316] px-3 py-2.5 text-sm text-white outline-none" placeholder="Teams per group" />
+                      <div className="space-y-3 rounded-2xl border border-white/10 bg-[#101316] p-3">
+                        <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Enter tournament pairs</p>
+                        {tournamentPairs.map((pair) => <div key={`${pair.group}-${pair.index}`}><p className="mb-1 text-xs font-semibold text-slate-300">Pair {pair.index + 1} · {pair.group === "a" ? tournamentDraft.group_a : tournamentDraft.group_b}</p><div className="grid grid-cols-2 gap-2"><select value={pair.player1} onChange={(event) => setPairNames((current) => { const next = current.length ? [...current] : tournamentPairs.map((item) => ({ ...item })); next.find((item) => item.group === pair.group && item.index === pair.index)!.player1 = event.target.value; return next; })} className="w-full rounded-lg border border-white/10 bg-[#171b1f] px-2.5 py-2 text-sm text-white outline-none"><option value="">Player 1</option>{availablePairPlayers(pair, "player1").map((player) => <option key={player.id} value={player.id}>{player.name}</option>)}</select><select value={pair.player2} onChange={(event) => setPairNames((current) => { const next = current.length ? [...current] : tournamentPairs.map((item) => ({ ...item })); next.find((item) => item.group === pair.group && item.index === pair.index)!.player2 = event.target.value; return next; })} className="w-full rounded-lg border border-white/10 bg-[#171b1f] px-2.5 py-2 text-sm text-white outline-none"><option value="">Player 2</option>{availablePairPlayers(pair, "player2").map((player) => <option key={player.id} value={player.id}>{player.name}</option>)}</select></div></div>)}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="space-y-4 rounded-2xl border border-white/10 bg-[#101316] p-3">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Groups (add players in rank order: top seed first)</p>
+                        <button type="button" onClick={() => setMultiGroupDraft((current) => [...current, { name: `Group ${String.fromCharCode(65 + current.length)}`, playerIds: [] }])} className="rounded-full border border-emerald-400/40 px-3 py-1 text-xs font-semibold text-emerald-300">+ Add group</button>
+                      </div>
+                      {multiGroupDraft.map((group, groupIndex) => (
+                        <div key={groupIndex} className="space-y-2 rounded-xl border border-white/10 bg-[#171b1f] p-3">
+                          <div className="flex items-center gap-2">
+                            <input value={group.name} onChange={(event) => setMultiGroupDraft((current) => current.map((item, index) => index === groupIndex ? { ...item, name: event.target.value } : item))} placeholder="Group name" className="flex-1 rounded-lg border border-white/10 bg-[#101316] px-2.5 py-2 text-sm text-white outline-none" />
+                            {multiGroupDraft.length > 2 && <button type="button" onClick={() => setMultiGroupDraft((current) => current.filter((_, index) => index !== groupIndex))} className="rounded-full border border-rose-400/40 px-2.5 py-1 text-xs font-semibold text-rose-300">Remove</button>}
+                          </div>
+                          <div className="space-y-1.5">
+                            {group.playerIds.map((playerId, seedIndex) => (
+                              <div key={seedIndex} className="flex items-center gap-2">
+                                <span className="w-14 shrink-0 text-xs font-semibold text-slate-400">Seed {seedIndex + 1}</span>
+                                <select
+                                  value={playerId}
+                                  onChange={(event) => setMultiGroupDraft((current) => current.map((item, index) => index === groupIndex ? { ...item, playerIds: item.playerIds.map((id, i) => i === seedIndex ? event.target.value : id) } : item))}
+                                  className="flex-1 rounded-lg border border-white/10 bg-[#101316] px-2.5 py-2 text-sm text-white outline-none"
+                                >
+                                  <option value="">Select player</option>
+                                  {players.filter((player) => player.id === playerId || !multiGroupDraft.some((item) => item.playerIds.includes(player.id))).map((player) => <option key={player.id} value={player.id}>{player.name}</option>)}
+                                </select>
+                                <button type="button" onClick={() => setMultiGroupDraft((current) => current.map((item, index) => index === groupIndex ? { ...item, playerIds: item.playerIds.filter((_, i) => i !== seedIndex) } : item))} className="rounded-full border border-rose-400/40 px-2.5 py-1 text-xs font-semibold text-rose-300">✕</button>
+                              </div>
+                            ))}
+                            <button type="button" onClick={() => setMultiGroupDraft((current) => current.map((item, index) => index === groupIndex ? { ...item, playerIds: [...item.playerIds, ""] } : item))} className="rounded-full border border-emerald-400/40 px-3 py-1 text-xs font-semibold text-emerald-300">+ Add player</button>
+                          </div>
+                        </div>
+                      ))}
+                      <p className="text-xs text-slate-400">Each unique rank-pair within a group (seed 1+2, 1+3, 1+4, 2+3...) will face the same rank-pair from every other group, so every player gets an equal number of games against each other group.</p>
+                    </div>
+                  )}
+
                   <button type="submit" className="w-full rounded-full bg-gradient-to-r from-emerald-500 to-cyan-500 px-4 py-3 text-sm font-semibold text-white">{editingTournamentId ? "Save league changes" : "Create league"}</button>
-                  {editingTournamentId && <button type="button" onClick={() => { setEditingTournamentId(null); setPairNames([]); }} className="w-full rounded-full border border-white/15 px-4 py-3 text-sm font-semibold text-slate-200">Cancel editing</button>}
+                  {editingTournamentId && <button type="button" onClick={() => { setEditingTournamentId(null); setPairNames([]); setMultiGroupDraft([{ name: "Group A", playerIds: [] }, { name: "Group B", playerIds: [] }, { name: "Group C", playerIds: [] }]); }} className="w-full rounded-full border border-white/15 px-4 py-3 text-sm font-semibold text-slate-200">Cancel editing</button>}
                 </form>
               </div>
               <div className="rounded-[26px] border border-[#d9d3d0] bg-[#f9f7f5] p-5">
                 <p className="text-[10px] uppercase tracking-[0.25em] text-[#696f77]">Competition calendar</p>
                 <h2 className="mt-2 text-2xl font-semibold text-[#181a1d]">Your leagues</h2>
-                <div className="mt-5 space-y-3">{visibleTournaments.map((tournament) => <div key={tournament.id} className="rounded-[20px] border border-[#e4dfdc] bg-white p-4"><div className="flex items-center justify-between gap-3"><p className="font-semibold text-[#17191d]">{tournament.name}</p><span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] uppercase text-emerald-700">{tournament.format}</span></div><p className="mt-2 text-sm text-[#626972]">{tournament.format === "internal" ? "All enrolled teams play one another." : "Teams play the teams in the opposite group."}</p><p className="mt-2 text-xs text-[#626972]">{formatEasternTime(tournament.event_date)}{tournament.location ? ` · ${tournament.location}` : ""}</p><div className="mt-4 flex flex-wrap gap-2"><button type="button" onClick={() => editTournament(tournament)} className="rounded-full border border-[#cdd8f7] px-3 py-1.5 text-xs font-semibold text-[#3949ab]">Edit league</button><button type="button" onClick={() => void clearTournamentResults(tournament)} className="rounded-full border border-[#e2c15a] px-3 py-1.5 text-xs font-semibold text-[#8d650b]">Clear results</button><button type="button" onClick={() => void toggleTournamentVisibility(tournament)} className="rounded-full border border-[#cdd8f7] px-3 py-1.5 text-xs font-semibold text-[#3949ab]">{tournament.status === "hidden" ? "Show league" : "Hide league"}</button><button type="button" onClick={() => { if (window.confirm(`Delete ${tournament.name} and all its pairs and results?`)) void deleteTournament(tournament); }} className="rounded-full border border-rose-200 px-3 py-1.5 text-xs font-semibold text-rose-700">Delete league</button></div></div>)}</div>
+                <div className="mt-5 space-y-3">{visibleTournaments.map((tournament) => <div key={tournament.id} className="rounded-[20px] border border-[#e4dfdc] bg-white p-4"><div className="flex items-center justify-between gap-3"><p className="font-semibold text-[#17191d]">{tournament.name}</p><span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] uppercase text-emerald-700">{tournament.format}</span></div><p className="mt-2 text-sm text-[#626972]">{tournament.format === "internal" ? "All enrolled teams play one another." : tournament.format === "external" ? "Teams play the teams in the opposite group." : "Ranked players form doubles pairs that face the same rank-pair from every other group."}</p><p className="mt-2 text-xs text-[#626972]">{formatEasternTime(tournament.event_date)}{tournament.location ? ` · ${tournament.location}` : ""}</p><div className="mt-4 flex flex-wrap gap-2"><button type="button" onClick={() => editTournament(tournament)} className="rounded-full border border-[#cdd8f7] px-3 py-1.5 text-xs font-semibold text-[#3949ab]">Edit league</button><button type="button" onClick={() => void clearTournamentResults(tournament)} className="rounded-full border border-[#e2c15a] px-3 py-1.5 text-xs font-semibold text-[#8d650b]">Clear results</button><button type="button" onClick={() => void toggleTournamentVisibility(tournament)} className="rounded-full border border-[#cdd8f7] px-3 py-1.5 text-xs font-semibold text-[#3949ab]">{tournament.status === "hidden" ? "Show league" : "Hide league"}</button><button type="button" onClick={() => { if (window.confirm(`Delete ${tournament.name} and all its pairs and results?`)) void deleteTournament(tournament); }} className="rounded-full border border-rose-200 px-3 py-1.5 text-xs font-semibold text-rose-700">Delete league</button></div></div>)}</div>
               </div>
             </section>
           )}
@@ -1364,7 +1657,7 @@ export default function Home() {
               <div className="rounded-[26px] border border-[#d9d3d0] bg-[#191c20] p-5 text-white">
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
                   <div><p className="text-[10px] uppercase tracking-[0.25em] text-slate-400">Competition table</p><h2 className="mt-2 text-2xl font-semibold">Tournament standings</h2></div>
-                  <select value={standingsTournament?.id ?? ""} onChange={(event) => setStandingsTournamentId(event.target.value)} className="rounded-xl border border-white/10 bg-[#101316] px-3 py-2.5 text-sm text-white outline-none"><option value="">Select league</option>{visibleTournaments.map((tournament) => <option key={tournament.id} value={tournament.id}>{tournament.name}</option>)}</select>
+                  <select value={standingsTournament?.id ?? ""} onChange={(event) => setStandingsTournamentId(event.target.value)} className="rounded-xl border border-white/10 bg-[#101316] px-3 py-2.5 text-sm text-white outline-none"><option value="">Select league</option>{roundRobinTournaments.map((tournament) => <option key={tournament.id} value={tournament.id}>{tournament.name}</option>)}</select>
                 </div>
                 {!standingsTournament && <p className="mt-5 text-sm text-slate-300">Create a league and record tournament matches to build standings.</p>}
                 {standingsTournament && <p className="mt-4 text-sm text-slate-300">{standingsTournament.format === "internal" ? "Internal league: top 4 qualify for the playoff." : "External league: top 8 qualify for the quarter-finals."} Rankings use wins first, then point difference, then points scored.</p>}
@@ -1431,7 +1724,7 @@ export default function Home() {
                       className="rounded-xl border border-white/10 bg-[#101316] px-3 py-2 text-sm text-white outline-none"
                     >
                       <option value="">Select league</option>
-                      {visibleTournaments.map((tournament) => (
+                      {roundRobinTournaments.map((tournament) => (
                         <option key={tournament.id} value={tournament.id}>
                           {tournament.name}
                         </option>
@@ -1564,7 +1857,7 @@ export default function Home() {
                     <label className="mb-2 block text-xs uppercase tracking-[0.2em] text-slate-400">League</label>
                     <select value={matchDraft.tournamentId} onChange={(event) => selectTournament(event.target.value)} className="w-full rounded-xl border border-white/10 bg-[#101316] px-3 py-2.5 text-sm text-white outline-none">
                       <option value="">Friendly / no league</option>
-                      {visibleTournaments.map((tournament) => <option key={tournament.id} value={tournament.id}>{tournament.name} ({tournament.format})</option>)}
+                      {roundRobinTournaments.map((tournament) => <option key={tournament.id} value={tournament.id}>{tournament.name} ({tournament.format})</option>)}
                     </select>
                   </div>
 
@@ -1689,6 +1982,142 @@ export default function Home() {
                   })}
                 </div>
               </div>
+            </section>
+          )}
+
+          {tab === "multigroup" && (
+            <section className="space-y-6">
+              <div className="rounded-[26px] border border-[#d9d3d0] bg-[#191c20] p-5 text-white">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-[0.25em] text-slate-400">Multi-group league</p>
+                    <h2 className="mt-2 text-2xl font-semibold">{multiGroupTournament?.name ?? "No multi-group league yet"}</h2>
+                  </div>
+                  <select value={multiGroupTournament?.id ?? ""} onChange={(event) => setMultiGroupTournamentId(event.target.value)} className="rounded-xl border border-white/10 bg-[#101316] px-3 py-2.5 text-sm text-white outline-none">
+                    <option value="">Select league</option>
+                    {multiGroupTournaments.map((tournament) => <option key={tournament.id} value={tournament.id}>{tournament.name}</option>)}
+                  </select>
+                </div>
+                {!multiGroupTournament && <p className="mt-5 text-sm text-slate-300">Create a multi-group league from the Leagues tab to get started.</p>}
+                {multiGroupTournament && <p className="mt-4 text-sm text-slate-300">Every unique rank-pair within a group faces the same rank-pair from every other group. Standings rank players individually by wins, then point difference.</p>}
+              </div>
+
+              {multiGroupTournament && (
+                <>
+                  <div className="rounded-[26px] border border-[#d9d3d0] bg-[#f9f7f5] p-5">
+                    <h2 className="text-xl font-semibold text-[#181a1d]">Fixtures &amp; results</h2>
+                    <div className="mt-4 grid gap-3 md:grid-cols-2">
+                      {multiGroupFixtures.map((fixture) => {
+                        const valueA = multiGroupScores[fixture.fixtureKey]?.a ?? (fixture.match ? String(fixture.match.playerAScore) : "");
+                        const valueB = multiGroupScores[fixture.fixtureKey]?.b ?? (fixture.match ? String(fixture.match.playerBScore) : "");
+                        return (
+                          <div key={fixture.fixtureKey} className="rounded-[18px] border border-[#e4dfdc] bg-white p-4">
+                            <p className="text-[10px] uppercase tracking-[0.14em] text-[#a8790e]">{fixture.groupAName} vs {fixture.groupBName}</p>
+                            <p className="mt-2 font-semibold text-[#17191d]">{pairLabel(fixture.teamAPlayers)} <span className="text-[#8a9097]">vs</span> {pairLabel(fixture.teamBPlayers)}</p>
+                            <div className="mt-3 grid grid-cols-2 gap-2">
+                              <input type="text" inputMode="numeric" placeholder="Score" value={valueA} onChange={(event) => setMultiGroupScores((current) => ({ ...current, [fixture.fixtureKey]: { a: event.target.value.replace(/\D/g, ""), b: current[fixture.fixtureKey]?.b ?? valueB } }))} className="w-full rounded-lg border border-[#d8dfe4] px-2 py-1.5 text-sm" />
+                              <input type="text" inputMode="numeric" placeholder="Score" value={valueB} onChange={(event) => setMultiGroupScores((current) => ({ ...current, [fixture.fixtureKey]: { a: current[fixture.fixtureKey]?.a ?? valueA, b: event.target.value.replace(/\D/g, "") } }))} className="w-full rounded-lg border border-[#d8dfe4] px-2 py-1.5 text-sm" />
+                            </div>
+                            <button type="button" onClick={() => void saveMultiGroupResult(fixture)} className="mt-3 w-full rounded-full border border-[#cdd8f7] px-3 py-1.5 text-xs font-semibold text-[#3949ab]">{fixture.match ? "Update result" : "Save result"}</button>
+                          </div>
+                        );
+                      })}
+                      {!multiGroupFixtures.length && <p className="text-sm text-[#626972]">Add at least 2 groups with 2+ ranked players each to generate fixtures.</p>}
+                    </div>
+                  </div>
+
+                  <div className="grid gap-6 lg:grid-cols-2">
+                    <div className="overflow-x-auto rounded-[26px] border border-[#d9d3d0] bg-[#f9f7f5] p-5">
+                      <h2 className="text-xl font-semibold text-[#181a1d]">Player standings</h2>
+                      <table className="mt-4 w-full min-w-[480px] text-left text-sm">
+                        <thead className="border-b border-[#ded8d4] text-[10px] uppercase tracking-[0.18em] text-[#6a7077]">
+                          <tr><th className="px-3 py-3">Rank</th><th className="px-3 py-3">Player</th><th className="px-3 py-3">Group</th><th className="px-3 py-3">P</th><th className="px-3 py-3">W</th><th className="px-3 py-3">Diff</th></tr>
+                        </thead>
+                        <tbody>
+                          {multiGroupPlayerStandings.map((entry, index) => (
+                            <tr key={entry.playerId} className="border-b border-[#ebe6e2] last:border-0">
+                              <td className="px-3 py-3 font-semibold text-[#59616a]">{index + 1}</td>
+                              <td className="px-3 py-3 font-semibold text-[#17191d]">{playerMap[entry.playerId]?.name ?? "Player"}</td>
+                              <td className="px-3 py-3 text-[#707780]">{entry.groupName}</td>
+                              <td className="px-3 py-3 text-[#30343a]">{entry.played}</td>
+                              <td className="px-3 py-3 font-bold text-[#17191d]">{entry.wins}</td>
+                              <td className={`px-3 py-3 font-semibold ${entry.diff >= 0 ? "text-emerald-700" : "text-rose-700"}`}>{entry.diff > 0 ? "+" : ""}{entry.diff}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <div className="overflow-x-auto rounded-[26px] border border-[#d9d3d0] bg-[#171a1d] p-5 text-white">
+                      <h2 className="text-xl font-semibold">Group standings (final qualification)</h2>
+                      <table className="mt-4 w-full min-w-[320px] text-left text-sm">
+                        <thead className="border-b border-white/10 text-[10px] uppercase tracking-[0.18em] text-slate-400">
+                          <tr><th className="px-3 py-3">Rank</th><th className="px-3 py-3">Group</th><th className="px-3 py-3">W</th><th className="px-3 py-3">Diff</th></tr>
+                        </thead>
+                        <tbody>
+                          {multiGroupGroupStandings.map((entry, index) => (
+                            <tr key={entry.groupName} className="border-b border-white/10 last:border-0">
+                              <td className="px-3 py-3 font-semibold text-slate-300">{index + 1}</td>
+                              <td className="px-3 py-3 font-semibold">{entry.groupName}{index < 2 ? <span className="ml-2 rounded-full bg-[#f7c62f] px-2 py-0.5 text-[9px] font-bold uppercase text-[#071a2d]">Final</span> : null}</td>
+                              <td className="px-3 py-3 font-bold">{entry.wins}</td>
+                              <td className={`px-3 py-3 font-semibold ${entry.diff >= 0 ? "text-emerald-300" : "text-rose-300"}`}>{entry.diff > 0 ? "+" : ""}{entry.diff}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      <p className="mt-3 text-xs text-slate-400">Top 2 groups qualify. Each group sends any 2 players of their choice to the final.</p>
+                    </div>
+                  </div>
+
+                  {isAuthenticated && (
+                    <div className="rounded-[26px] border border-[#d7a91d]/50 bg-[#0d2b4a] p-5 text-white">
+                      <h2 className="text-xl font-semibold">Final</h2>
+                      <div className="mt-4 grid gap-4 md:grid-cols-2">
+                        <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                          <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-slate-400">Finalist group 1</label>
+                          <select value={finalDraft.groupA} onChange={(event) => setFinalDraft((current) => ({ ...current, groupA: event.target.value, groupAPlayers: [] }))} className="w-full rounded-xl border border-white/10 bg-[#101316] px-3 py-2 text-sm text-white outline-none">
+                            <option value="">Select group</option>
+                            {multiGroupConfig.map((group) => <option key={group.name} value={group.name}>{group.name}</option>)}
+                          </select>
+                          {finalDraft.groupA && (
+                            <div className="mt-3 space-y-2">
+                              {[0, 1].map((slot) => (
+                                <select key={slot} value={finalDraft.groupAPlayers[slot] ?? ""} onChange={(event) => setFinalDraft((current) => { const next = [...current.groupAPlayers]; next[slot] = event.target.value; return { ...current, groupAPlayers: next }; })} className="w-full rounded-lg border border-white/10 bg-[#101316] px-2.5 py-2 text-sm text-white outline-none">
+                                  <option value="">Player {slot + 1}</option>
+                                  {multiGroupConfig.find((group) => group.name === finalDraft.groupA)?.playerIds.map((playerId) => <option key={playerId} value={playerId}>{playerMap[playerId]?.name ?? "Player"}</option>)}
+                                </select>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                          <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-slate-400">Finalist group 2</label>
+                          <select value={finalDraft.groupB} onChange={(event) => setFinalDraft((current) => ({ ...current, groupB: event.target.value, groupBPlayers: [] }))} className="w-full rounded-xl border border-white/10 bg-[#101316] px-3 py-2 text-sm text-white outline-none">
+                            <option value="">Select group</option>
+                            {multiGroupConfig.filter((group) => group.name !== finalDraft.groupA).map((group) => <option key={group.name} value={group.name}>{group.name}</option>)}
+                          </select>
+                          {finalDraft.groupB && (
+                            <div className="mt-3 space-y-2">
+                              {[0, 1].map((slot) => (
+                                <select key={slot} value={finalDraft.groupBPlayers[slot] ?? ""} onChange={(event) => setFinalDraft((current) => { const next = [...current.groupBPlayers]; next[slot] = event.target.value; return { ...current, groupBPlayers: next }; })} className="w-full rounded-lg border border-white/10 bg-[#101316] px-2.5 py-2 text-sm text-white outline-none">
+                                  <option value="">Player {slot + 1}</option>
+                                  {multiGroupConfig.find((group) => group.name === finalDraft.groupB)?.playerIds.map((playerId) => <option key={playerId} value={playerId}>{playerMap[playerId]?.name ?? "Player"}</option>)}
+                                </select>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <div className="mt-4 grid grid-cols-2 gap-2">
+                        <input type="text" inputMode="numeric" placeholder="Score" value={multiGroupScores.final?.a ?? (multiGroupFinalMatch ? String(multiGroupFinalMatch.playerAScore) : "")} onChange={(event) => setMultiGroupScores((current) => ({ ...current, final: { a: event.target.value.replace(/\D/g, ""), b: current.final?.b ?? "" } }))} className="w-full rounded-lg border border-white/10 bg-[#101316] px-3 py-2 text-sm text-white outline-none" />
+                        <input type="text" inputMode="numeric" placeholder="Score" value={multiGroupScores.final?.b ?? (multiGroupFinalMatch ? String(multiGroupFinalMatch.playerBScore) : "")} onChange={(event) => setMultiGroupScores((current) => ({ ...current, final: { a: current.final?.a ?? "", b: event.target.value.replace(/\D/g, "") } }))} className="w-full rounded-lg border border-white/10 bg-[#101316] px-3 py-2 text-sm text-white outline-none" />
+                      </div>
+                      <button type="button" onClick={() => void saveMultiGroupFinal()} className="mt-4 w-full rounded-full bg-gradient-to-r from-amber-500 to-yellow-400 px-4 py-3 text-sm font-bold uppercase tracking-wider text-[#071a2d]">{multiGroupFinalMatch ? "Update final result" : "Save final result"}</button>
+                      {multiGroupFinalMatch && <p className="mt-3 text-center text-sm text-slate-300">🏆 {multiGroupFinalMatch.playerAScore > multiGroupFinalMatch.playerBScore ? pairLabel([multiGroupFinalMatch.playerAId, multiGroupFinalMatch.teamAPlayer2Id ?? ""]) : pairLabel([multiGroupFinalMatch.playerBId, multiGroupFinalMatch.teamBPlayer2Id ?? ""])} won the final {multiGroupFinalMatch.playerAScore} : {multiGroupFinalMatch.playerBScore}</p>}
+                    </div>
+                  )}
+                </>
+              )}
             </section>
           )}
         </main>

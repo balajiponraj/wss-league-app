@@ -44,7 +44,7 @@ create table if not exists public.teams (
 create table if not exists public.tournaments (
   id text primary key,
   name text not null,
-  format text not null check (format in ('internal', 'external')),
+  format text not null check (format in ('internal', 'external', 'multigroup')),
   status text not null default 'active',
   event_date timestamptz,
   location text not null default '',
@@ -64,6 +64,11 @@ alter table public.matches add column if not exists "teamBId" text references pu
 alter table public.matches add column if not exists "tournamentId" text references public.tournaments(id);
 alter table public.matches add column if not exists stage text not null default 'round_robin';
 alter table public.matches add column if not exists "bracketKey" text;
+alter table public.matches add column if not exists "teamAPlayer2Id" text;
+alter table public.matches add column if not exists "teamBPlayer2Id" text;
+alter table public.tournaments add column if not exists groups_json text;
+alter table public.tournaments drop constraint if exists tournaments_format_check;
+alter table public.tournaments add constraint tournaments_format_check check (format in ('internal', 'external', 'multigroup'));
 
 alter table public.players enable row level security;
 alter table public.matches enable row level security;
